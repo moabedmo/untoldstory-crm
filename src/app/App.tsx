@@ -8772,19 +8772,26 @@ const ProductionCustodyDashboard = () => {
 
   const [prodActiveTab, setProdActiveTab] = useState<'requests' | 'pricing'>(() => {
     if (!currentUser?.id) return 'requests';
+    const uid = String(currentUser.id).trim();
+    const uname = (currentUser.name || '').trim();
     const pending = (priceQuotes as PriceQuote[]).some(
-      (q) => q.status === 'بانتظار التسعير' &&
-        (q.productionAssignedId === currentUser.id || q.productionAssignedName === currentUser.name)
+      (q) =>
+        q.status === 'بانتظار التسعير' &&
+        (String(q.productionAssignedId || '').trim() === uid ||
+          (uname && String(q.productionAssignedName || '').trim() === uname)),
     );
     return pending ? 'pricing' : 'requests';
   });
 
   const myPricingQueue = useMemo(() => {
     if (!currentUser?.id) return [];
+    const uid = String(currentUser.id).trim();
+    const uname = (currentUser.name || '').trim();
     return (priceQuotes as PriceQuote[]).filter(
       (q) =>
         q.status === 'بانتظار التسعير' &&
-        (q.productionAssignedId === currentUser.id || q.productionAssignedName === currentUser.name)
+        (String(q.productionAssignedId || '').trim() === uid ||
+          (uname && String(q.productionAssignedName || '').trim() === uname)),
     );
   }, [priceQuotes, currentUser?.id, currentUser?.name]);
 

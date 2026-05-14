@@ -374,6 +374,27 @@ export function buildSystemNotifications(input: BuildSystemNotificationsInput): 
       });
     }
 
+    const pendingPricingByPm = new Map<string, number>();
+    priceQuotes.forEach((q) => {
+      if (q.status !== 'بانتظار التسعير' || !q.productionAssignedId) return;
+      const k = String(q.productionAssignedId).trim();
+      if (!k) return;
+      pendingPricingByPm.set(k, (pendingPricingByPm.get(k) || 0) + 1);
+    });
+    pendingPricingByPm.forEach((count, pmId) => {
+      out.push({
+        id: `n-quote-pending-pricing-${pmId}`,
+        level: 'high',
+        title: 'طلبات تسعير بانتظارك',
+        message: `لديك ${count} عرض سعر يحتاج التسعير في الإنتاج`,
+        createdAt: nowIso,
+        targetRoles: ['مدير إنتاج'],
+        targetUserId: pmId,
+        entityType: 'system',
+        navigateTab: 'bookings',
+      });
+    });
+
     const recentQuoteDecisions = priceQuotes
       .filter((q) => q.status === 'معتمد' || q.status === 'مرفوض')
       .filter((q) => q.approvedAt && (now.getTime() - new Date(q.approvedAt).getTime()) <= 1000 * 60 * 60 * 24 * 14);

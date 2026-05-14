@@ -19,5 +19,17 @@ export function priceQuoteToJson(row) {
     invoiceId: row.invoiceId ?? undefined,
     companyMarginPercent: typeof row.companyMarginPercent === 'number' ? row.companyMarginPercent : undefined,
     productionCostAmount: typeof row.productionCostAmount === 'number' ? row.productionCostAmount : undefined,
+    productionAssignedId: row.productionAssignedId ?? undefined,
+    productionAssignedName: row.productionAssignedName ?? undefined,
+    pricedById: row.pricedById ?? undefined,
+    pricedByName: row.pricedByName ?? undefined,
+    pricedAt: row.pricedAt ? row.pricedAt.toISOString() : undefined,
+    pricingNote: row.pricingNote ?? undefined,
+    paymentSchedule: row.paymentScheduleJson != null ? row.paymentScheduleJson : undefined,
+    initialPayment: row.initialPayment != null ? row.initialPayment : undefined,
+    clientPayments: row.clientPaymentsJson != null ? row.clientPaymentsJson : undefined,
+    clientAcceptedAt: row.clientAcceptedAt ? row.clientAcceptedAt.toISOString() : undefined,
+    clientRejectedAt: row.clientRejectedAt ? row.clientRejectedAt.toISOString() : undefined,
+    clientRejectionNote: row.clientRejectionNote ?? undefined,
   };
 }

@@ -6,11 +6,20 @@ import { priceQuoteToJson } from '../lib/priceQuoteSerialize.js';
 const router = Router();
 
 function canList(actor) {
-  return ['مالك', 'مدير مبيعات', 'محاسب', 'مندوب'].includes(actor.role);
+  return ['مالك', 'مدير مبيعات', 'محاسب', 'مندوب', 'مدير إنتاج'].includes(actor.role);
 }
 
 function canCreate(actor) {
   return actor.role === 'مندوب' || actor.role === 'مدير مبيعات';
+}
+
+/** من يُسمح له بتعديل صف عرض السعر (الواجهة تفرض القواعد؛ هنا الحد الأدنى للسلامة) */
+function canPatchQuote(actor, existing) {
+  if (actor.role === 'مالك') return true;
+  if (actor.role === 'مدير مبيعات') return true;
+  if (actor.role === 'مندوب' && existing.createdById === actor.id) return true;
+  if (actor.role === 'مدير إنتاج' && existing.productionAssignedId === actor.id) return true;
+  return false;
 }
 
 router.get('/', requireAuth(), async (req, res) => {
@@ -19,7 +28,12 @@ router.get('/', requireAuth(), async (req, res) => {
       return res.status(403).json({ error: 'غير مصرح' });
     }
     const { role, id: userId } = req.authUser;
-    const where = role === 'مندوب' ? { createdById: userId } : {};
+    let where = {};
+    if (role === 'مندوب') {
+      where = { createdById: userId };
+    } else if (role === 'مدير إنتاج') {
+      where = { productionAssignedId: userId };
+    }
     const rows = await prisma.priceQuote.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -42,16 +56,24 @@ router.post('/', requireAuth(), async (req, res) => {
     const customerName = String(body.customerName || '').trim();
     const title = String(body.title || '').trim();
     const amount = Math.max(0, Math.round(Number(body.amount) || 0));
-    if (!leadId || !customerName || !title || !amount) {
+    const productionAssignedId = body.productionAssignedId ? String(body.productionAssignedId).trim() : null;
+    const productionAssignedName = body.productionAssignedName ? String(body.productionAssignedName).trim() : null;
+    const routedToProduction = Boolean(productionAssignedId);
+    if (!leadId || !customerName || !title || (!amount && !routedToProduction)) {
       return res.status(400).json({ error: 'بيانات عرض السعر ناقصة' });
     }
     const vatRate = typeof body.vatRate === 'number' ? body.vatRate : 14;
     const vatAmount =
       typeof body.vatAmount === 'number'
         ? Math.round(body.vatAmount)
-        : Math.round(amount * (vatRate / 100));
+        : amount > 0
+          ? Math.round(amount * (vatRate / 100))
+          : 0;
     const totalAmount =
-      typeof body.totalAmount === 'number' ? Math.round(body.totalAmount) : amount + vatAmount;
+      typeof body.totalAmount === 'number' ? Math.round(body.totalAmount) : amount > 0 ? amount + vatAmount : 0;
+    const stRaw = String(body.status || '').trim();
+    const status =
+      stRaw === 'بانتظار التسعير' && routedToProduction ? 'بانتظار التسعير' : 'قيد اعتماد المالك';
     const row = await prisma.priceQuote.create({
       data: {
         ...(id ? { id } : {}),
@@ -66,7 +88,10 @@ router.post('/', requireAuth(), async (req, res) => {
         note: body.note ? String(body.note).trim() : null,
         createdById: req.authUser.id,
         createdByName: req.authUser.name,
-        status: 'قيد اعتماد المالك',
+        status,
+        productionAssignedId,
+        productionAssignedName,
+        pricingNote: body.pricingNote ? String(body.pricingNote).trim() : null,
       },
     });
     return res.status(201).json({ quote: priceQuoteToJson(row) });
@@ -86,6 +111,10 @@ router.patch('/:id', requireAuth(), async (req, res) => {
     const existing = await prisma.priceQuote.findUnique({ where: { id } });
     if (!existing) return res.status(404).json({ error: 'غير موجود' });
 
+    if (!canPatchQuote(actor, existing)) {
+      return res.status(403).json({ error: 'غير مصرح' });
+    }
+
     const patch = req.body || {};
     const data = {};
 
@@ -95,6 +124,9 @@ router.patch('/:id', requireAuth(), async (req, res) => {
         if (actor.role !== 'مالك') {
           return res.status(403).json({ error: 'غير مصرح' });
         }
+        if (existing.status !== 'قيد اعتماد المالك') {
+          return res.status(400).json({ error: 'عرض السعر ليس قيد اعتماد المالك' });
+        }
         data.status = 'مرفوض';
         data.approvedBy = actor.name;
         data.approvedAt = new Date();
@@ -102,20 +134,73 @@ router.patch('/:id', requireAuth(), async (req, res) => {
         if (actor.role !== 'مالك' && actor.role !== 'مدير مبيعات') {
           return res.status(403).json({ error: 'غير مصرح' });
         }
+        if (existing.status !== 'قيد اعتماد المالك') {
+          return res.status(400).json({ error: 'عرض السعر ليس قيد اعتماد المالك' });
+        }
         data.status = 'معتمد';
         if (patch.approvedBy) data.approvedBy = String(patch.approvedBy);
         else data.approvedBy = actor.name;
         data.approvedAt = patch.approvedAt ? new Date(patch.approvedAt) : new Date();
         if (patch.invoiceId) data.invoiceId = String(patch.invoiceId).trim();
+        if (patch.paymentSchedule != null) data.paymentScheduleJson = patch.paymentSchedule;
+        if (patch.initialPayment != null) data.initialPayment = Math.round(Number(patch.initialPayment) || 0);
+      } else if (st === 'قيد اعتماد المالك' && existing.status === 'بانتظار التسعير') {
+        data.status = 'قيد اعتماد المالك';
+      } else if (st === 'مكتمل' || st === 'مغلق - رفض العميل') {
+        data.status = st;
+      } else if (st === 'بانتظار التسعير') {
+        if (actor.role !== 'مالك' && actor.role !== 'مدير مبيعات') {
+          return res.status(403).json({ error: 'غير مصرح' });
+        }
+        data.status = 'بانتظار التسعير';
       } else {
         return res.status(400).json({ error: 'حالة غير صالحة' });
       }
-    } else {
+    }
+
+    if (patch.amount != null) data.amount = Math.max(0, Math.round(Number(patch.amount) || 0));
+    if (patch.vatRate != null) data.vatRate = Number(patch.vatRate);
+    if (patch.vatAmount != null) data.vatAmount = Math.round(Number(patch.vatAmount) || 0);
+    if (patch.totalAmount != null) data.totalAmount = Math.round(Number(patch.totalAmount) || 0);
+    if (patch.costCenter != null) data.costCenter = String(patch.costCenter).trim() || 'عام';
+    if (patch.note !== undefined) data.note = patch.note ? String(patch.note).trim() : null;
+
+    if (patch.productionAssignedId !== undefined) {
+      data.productionAssignedId = patch.productionAssignedId ? String(patch.productionAssignedId).trim() : null;
+    }
+    if (patch.productionAssignedName !== undefined) {
+      data.productionAssignedName = patch.productionAssignedName ? String(patch.productionAssignedName).trim() : null;
+    }
+    if (patch.pricedById != null) data.pricedById = String(patch.pricedById).trim();
+    if (patch.pricedByName != null) data.pricedByName = String(patch.pricedByName).trim();
+    if (patch.pricedAt != null) data.pricedAt = new Date(patch.pricedAt);
+    if (patch.pricingNote !== undefined) data.pricingNote = patch.pricingNote ? String(patch.pricingNote).trim() : null;
+    if (patch.paymentSchedule != null) data.paymentScheduleJson = patch.paymentSchedule;
+    if (patch.initialPayment != null) data.initialPayment = Math.round(Number(patch.initialPayment) || 0);
+    if (patch.clientPayments != null) data.clientPaymentsJson = patch.clientPayments;
+    if (patch.clientAcceptedAt != null) data.clientAcceptedAt = new Date(patch.clientAcceptedAt);
+    if (patch.clientRejectedAt != null) data.clientRejectedAt = new Date(patch.clientRejectedAt);
+    if (patch.clientRejectionNote !== undefined) {
+      data.clientRejectionNote = patch.clientRejectionNote ? String(patch.clientRejectionNote).trim() : null;
+    }
+    if (patch.companyMarginPercent !== undefined) {
+      data.companyMarginPercent = Math.min(100, Math.max(0, Number(patch.companyMarginPercent) || 0));
+    }
+    if (patch.productionCostAmount !== undefined) {
+      data.productionCostAmount = Math.round(Number(patch.productionCostAmount) || 0);
+    }
+    if (patch.invoiceId !== undefined && patch.invoiceId != null) {
+      data.invoiceId = String(patch.invoiceId).trim();
+    }
+
+    if (Object.keys(data).length === 0) {
       return res.status(400).json({ error: 'لا يوجد تحديث' });
     }
 
-    if (existing.status !== 'قيد اعتماد المالك') {
-      return res.status(400).json({ error: 'عرض السعر ليس قيد الاعتماد' });
+    if (data.status === 'معتمد' || data.status === 'مرفوض') {
+      if (existing.status !== 'قيد اعتماد المالك') {
+        return res.status(400).json({ error: 'عرض السعر ليس قيد الاعتماد' });
+      }
     }
 
     const row = await prisma.priceQuote.update({ where: { id }, data });

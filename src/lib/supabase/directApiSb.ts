@@ -750,6 +750,7 @@ export async function fetchPriceQuotesSb(): Promise<PriceQuote[]> {
   const sb = getSupabase();
   let q = sb.from('price_quotes').select('*').order('created_at', { ascending: false });
   if (actor.role === 'مندوب') q = q.eq('created_by_id', actor.id);
+  if (actor.role === 'مدير إنتاج') q = q.eq('production_assigned_id', actor.id);
   const { data, error } = await q;
   if (error) throw new Error(error.message);
   if (!Array.isArray(data)) return [];
@@ -828,6 +829,12 @@ export async function patchPriceQuoteSb(
   if (patch.pricedByName != null) rowUp.priced_by_name = String(patch.pricedByName);
   if (patch.pricedAt != null) rowUp.priced_at = String(patch.pricedAt);
   if (patch.pricingNote != null) rowUp.pricing_note = String(patch.pricingNote);
+  if (patch.productionAssignedId !== undefined) {
+    rowUp.production_assigned_id = patch.productionAssignedId ? String(patch.productionAssignedId).trim() : null;
+  }
+  if (patch.productionAssignedName !== undefined) {
+    rowUp.production_assigned_name = patch.productionAssignedName ? String(patch.productionAssignedName).trim() : null;
+  }
   if (patch.paymentSchedule != null) rowUp.payment_schedule_json = JSON.stringify(patch.paymentSchedule);
   if (patch.initialPayment != null) rowUp.initial_payment = Number(patch.initialPayment);
   if (patch.clientPayments != null) rowUp.client_payments_json = JSON.stringify(patch.clientPayments);
