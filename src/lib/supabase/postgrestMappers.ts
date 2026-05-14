@@ -163,7 +163,12 @@ export function mapUserFromRow(r: Record<string, unknown>): User {
         ? r.avatar
         : 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop',
     skills: Array.isArray(skills) ? skills : [],
-    baseSalary: typeof r.base_salary === 'number' ? r.base_salary : undefined,
+    baseSalary: (() => {
+      const v = r.base_salary;
+      if (v == null || v === '') return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.round(n) : undefined;
+    })(),
     stats: {
       dealsWon: Number(statsRaw.dealsWon) || 0,
       points: Number(statsRaw.points) || 0,

@@ -72,6 +72,9 @@ type InvoiceQuickFilter = 'all' | 'overdue_installments' | 'due_today_installmen
 type ExpenseQuickFilter = 'all' | 'pending_approval';
 type BookingQuickFilter = 'all' | 'today' | 'pending_review' | 'financial_claims_pending_execution';
 
+/** أدوار يُخزَّن لها راتب أساسي (عرض عند المحاسب وتعديل الراتب) */
+const PAYROLL_SALARY_ROLES: User['role'][] = ['مندوب', 'محاسب', 'مدير مبيعات', 'مدير إنتاج'];
+
 type BookingHubTab = 'shoot' | 'equipment' | 'meeting' | 'other';
 
 function browserNotificationsSupported(): boolean {
@@ -999,7 +1002,14 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
         }).map(a => new Date(a.createdAt).toISOString().slice(0, 10))
       );
 
-      const baseSalary = Number(rep.baseSalary) > 0 ? Number(rep.baseSalary) : (isSalesRep ? 10000 : 0);
+    const baseSalary =
+      Number(rep.baseSalary) > 0
+        ? Number(rep.baseSalary)
+        : rep.authSource === 'database'
+          ? 0
+          : isSalesRep
+            ? 10000
+            : 0;
       const lateResponsePenalty = isSalesRep ? Math.max(0, (snap?.avgResponseMins || 0) - 45) * 15 : 0;
       const followUpPenalty = isSalesRep ? overdueFollowUps * 120 : 0;
       const callsShortage = isSalesRep ? Math.max(0, (snap?.callsTarget || 80) - (snap?.callsCount || 0)) : 0;
@@ -1084,7 +1094,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
     const ok = await addEmployee({
       name,
       role: newEmployeeForm.role,
-      baseSalary: newEmployeeForm.role === 'مندوب' ? baseSalary : undefined,
+      baseSalary: PAYROLL_SALARY_ROLES.includes(newEmployeeForm.role) ? baseSalary : undefined,
     });
     if (ok) setNewEmployeeForm({ name: '', role: 'مندوب', baseSalary: '10000' });
   };
@@ -2276,7 +2286,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       min={0}
                       value={newEmployeeForm.baseSalary}
                       onChange={(e) => setNewEmployeeForm(prev => ({ ...prev, baseSalary: e.target.value }))}
-                      disabled={newEmployeeForm.role !== 'مندوب'}
+                      disabled={!PAYROLL_SALARY_ROLES.includes(newEmployeeForm.role)}
                       placeholder="الراتب الأساسي"
                       className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm disabled:opacity-50"
                     />
@@ -2496,6 +2506,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                           </td>
                           <td className="p-3">
                             <input
+                              key={`${row.repId}-${row.baseSalary}`}
                               type="number"
                               min={0}
                               defaultValue={row.baseSalary}
@@ -4753,7 +4764,7 @@ const SalesManagerSettings = ({
             role: user.role,
             avatar: user.avatar || '',
             email: (user.email || '').trim(),
-            baseSalary: user.role === 'مندوب' ? String(user.baseSalary ?? 0) : '',
+            baseSalary: PAYROLL_SALARY_ROLES.includes(user.role) ? String(user.baseSalary ?? 0) : '',
           };
         setEmployeeEdits((prev) => ({ ...prev, [userId]: { ...draft, avatar: avatarDataUrl } }));
       } else {
@@ -4825,7 +4836,7 @@ const SalesManagerSettings = ({
           role: u.role,
           avatar: u.avatar || '',
           email: (u.email || '').trim(),
-          baseSalary: u.role === 'مندوب' ? String(u.baseSalary ?? 0) : '',
+          baseSalary: PAYROLL_SALARY_ROLES.includes(u.role) ? String(u.baseSalary ?? 0) : '',
         },
       };
     });
@@ -4857,10 +4868,9 @@ const SalesManagerSettings = ({
       avatar: newEmployee.avatar.trim() || undefined,
       email: emailTrim,
       password: pwd.length >= 8 ? pwd : undefined,
-      baseSalary:
-        newEmployee.role === 'مندوب'
-          ? Math.max(0, Math.round(Number(String(newEmployee.baseSalary).replace(/,/g, '')) || 0))
-          : undefined,
+      baseSalary: PAYROLL_SALARY_ROLES.includes(newEmployee.role)
+        ? Math.max(0, Math.round(Number(String(newEmployee.baseSalary).replace(/,/g, '')) || 0))
+        : undefined,
     });
     if (ok) setNewEmployee({ name: '', role: 'مندوب', avatar: '', loginEmail: '', password: '', baseSalary: '10000' });
   };
@@ -4873,14 +4883,15 @@ const SalesManagerSettings = ({
       toast.error('صيغة البريد غير صالحة');
       return;
     }
-    const salaryParsed =
-      draft.role === 'مندوب' ? Math.max(0, Math.round(Number(String(draft.baseSalary).replace(/,/g, '')) || 0)) : undefined;
+    const salaryParsed = PAYROLL_SALARY_ROLES.includes(draft.role)
+      ? Math.max(0, Math.round(Number(String(draft.baseSalary).replace(/,/g, '')) || 0))
+      : undefined;
     const ok = await updateEmployeeProfile(userId, {
       name: draft.name,
       role: draft.role,
       avatar: draft.avatar,
       ...(canEditBranding ? { email: draft.email } : {}),
-      ...(draft.role === 'مندوب' && salaryParsed !== undefined ? { baseSalary: salaryParsed } : {}),
+      ...(PAYROLL_SALARY_ROLES.includes(draft.role) && salaryParsed !== undefined ? { baseSalary: salaryParsed } : {}),
     });
     if (!ok) {
       return;
@@ -5258,7 +5269,9 @@ const SalesManagerSettings = ({
                   setNewEmployee((p) => ({
                     ...p,
                     role,
-                    baseSalary: role === 'مندوب' && (!p.baseSalary || p.baseSalary.trim() === '') ? '10000' : p.baseSalary,
+                    baseSalary: PAYROLL_SALARY_ROLES.includes(role) && (!p.baseSalary || p.baseSalary.trim() === '')
+                      ? '10000'
+                      : p.baseSalary,
                   }));
                 }}
                 className="bg-[#0F1528] border border-white/10 rounded-xl px-3 py-2 text-sm"
@@ -5271,7 +5284,7 @@ const SalesManagerSettings = ({
                 type="text"
                 inputMode="numeric"
                 dir="ltr"
-                disabled={newEmployee.role !== 'مندوب'}
+                disabled={!PAYROLL_SALARY_ROLES.includes(newEmployee.role)}
                 value={newEmployee.baseSalary}
                 onChange={(e) =>
                   setNewEmployee((p) => ({ ...p, baseSalary: e.target.value.replace(/[^\d]/g, '') }))
@@ -5349,7 +5362,7 @@ const SalesManagerSettings = ({
                     role: employee.role,
                     avatar: employee.avatar || '',
                     email: (employee.email || '').trim(),
-                    baseSalary: employee.role === 'مندوب' ? String(employee.baseSalary ?? 0) : '',
+                    baseSalary: PAYROLL_SALARY_ROLES.includes(employee.role) ? String(employee.baseSalary ?? 0) : '',
                   };
                 return (
                   <tr key={employee.id} className={trafficRowClass(employee.role === 'مندوب' ? (employee.skills.length > 0 ? 'safe' : 'warn') : 'neutral')}>
@@ -5397,7 +5410,7 @@ const SalesManagerSettings = ({
                             setEmployeeEdits((prev) => {
                               const d = prev[employee.id] || draft;
                               const nextBase =
-                                role === 'مندوب'
+                                PAYROLL_SALARY_ROLES.includes(role)
                                   ? d.baseSalary && d.baseSalary.trim() !== ''
                                     ? d.baseSalary
                                     : String(employee.baseSalary ?? 10000)
@@ -5441,7 +5454,7 @@ const SalesManagerSettings = ({
                       )}
                     </td>
                     <td className="p-3 min-w-[120px]">
-                      {canOwnerEditEmployeeRow(employee) && draft.role === 'مندوب' ? (
+                      {canOwnerEditEmployeeRow(employee) && PAYROLL_SALARY_ROLES.includes(draft.role) ? (
                         <div className="flex items-center gap-1">
                           <input
                             type="text"
@@ -5460,7 +5473,7 @@ const SalesManagerSettings = ({
                           />
                           <span className="text-[10px] text-zinc-500 shrink-0">ج.م</span>
                         </div>
-                      ) : employee.role === 'مندوب' ? (
+                      ) : PAYROLL_SALARY_ROLES.includes(employee.role) ? (
                         `${(employee.baseSalary || 0).toLocaleString('ar-EG')} ج.م`
                       ) : (
                         '—'

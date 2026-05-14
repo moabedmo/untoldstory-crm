@@ -198,7 +198,10 @@ export async function createUserSb(payload: {
   }
 
   const skills = Array.isArray(payload.skills) ? payload.skills : [];
-  const baseSalary = role === 'مندوب' ? Math.max(0, Math.round(Number(payload.baseSalary) || 0)) : null;
+  const payrollRolesForSalary = ['مندوب', 'محاسب', 'مدير مبيعات', 'مدير إنتاج'];
+  const baseSalary = payrollRolesForSalary.includes(role)
+    ? Math.max(0, Math.round(Number(payload.baseSalary) || 0))
+    : null;
   const avatar = payload.avatar ? String(payload.avatar).trim() || null : null;
   const nowIso = new Date().toISOString();
 
@@ -253,8 +256,9 @@ export async function patchUserSb(
   const canOwner = actor.role === 'مالك';
   const isSelf = actor.id === existing.id;
   const canSalesSkills = actor.role === 'مدير مبيعات' && existing.role === 'مندوب';
+  const payrollRolesForSalary = ['مندوب', 'محاسب', 'مدير مبيعات', 'مدير إنتاج'];
   const canAccountingSalary =
-    (actor.role === 'محاسب' || actor.role === 'مالك') && existing.role === 'مندوب';
+    (actor.role === 'محاسب' || actor.role === 'مالك') && payrollRolesForSalary.includes(existing.role);
 
   const data: Record<string, unknown> = {};
   if (patch.name != null && String(patch.name).trim()) {
@@ -293,6 +297,12 @@ export async function patchUserSb(
     data.skills_json = Array.isArray(patch.skills) ? patch.skills : [];
   }
   if (patch.baseSalary != null) {
+    if (existing.role === 'مالك' && existing.id !== actor.id) {
+      throw new Error('لا يمكن تعديل راتب حساب مالك آخر');
+    }
+    if (!payrollRolesForSalary.includes(existing.role) && !(existing.role === 'مالك' && existing.id === actor.id)) {
+      throw new Error('لا يُخزَّن راتب أساسي لهذا الدور');
+    }
     if (!canAccountingSalary && !canOwner) throw new Error('غير مصرح');
     data.base_salary = Math.max(0, Math.round(Number(patch.baseSalary) || 0));
   }

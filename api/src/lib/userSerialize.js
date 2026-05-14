@@ -30,7 +30,12 @@ export function userToJson(row) {
     authSource: 'database',
     avatar: row.avatar || DEFAULT_AVATAR,
     skills: Array.isArray(skills) ? skills : [],
-    baseSalary: typeof row.baseSalary === 'number' ? row.baseSalary : undefined,
+    baseSalary: (() => {
+      const v = row.baseSalary;
+      if (v == null) return undefined;
+      const n = Number(v);
+      return Number.isFinite(n) ? Math.round(n) : undefined;
+    })(),
     stats: {
       dealsWon: Number(stats.dealsWon) || 0,
       points: Number(stats.points) || 0,

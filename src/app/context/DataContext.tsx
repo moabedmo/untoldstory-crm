@@ -1911,7 +1911,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             ? '/avatars/khaled-bandary.png'
             : (raw?.avatar || 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?w=100&h=100&fit=crop'),
       skills: Array.isArray(raw?.skills) ? raw.skills : [],
-      baseSalary: typeof raw?.baseSalary === 'number' ? raw.baseSalary : (role === 'مندوب' ? 10000 : undefined),
+      baseSalary: (() => {
+        const v = raw?.baseSalary;
+        if (v != null && v !== '') {
+          const n = Number(v);
+          if (Number.isFinite(n)) return Math.round(n);
+        }
+        if (!fromDb && role === 'مندوب') return 10000;
+        return undefined;
+      })(),
       stats: {
         dealsWon: Number(raw?.stats?.dealsWon) || 0,
         points: Number(raw?.stats?.points) || 0,
@@ -5261,7 +5269,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       toast.error('لا يمكن إنشاء حساب مالك من حساب المحاسب');
       return false;
     }
-    const isRep = employee.role === 'مندوب';
+    const payrollSalaryRoles: User['role'][] = ['مندوب', 'محاسب', 'مدير مبيعات', 'مدير إنتاج'];
+    const hasPayrollSalary = payrollSalaryRoles.includes(employee.role);
     if (isServerDataMode()) {
       const emailRaw = typeof employee.email === 'string' ? employee.email.trim().toLowerCase() : '';
       const pwdRaw = typeof employee.password === 'string' ? employee.password.trim() : '';
@@ -5270,7 +5279,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           name: cleanName,
           role: employee.role,
           avatar: employee.avatar,
-          baseSalary: isRep ? Math.max(0, Number(employee.baseSalary) || 0) : undefined,
+          baseSalary: hasPayrollSalary ? Math.max(0, Number(employee.baseSalary) || 0) : undefined,
           ...(emailRaw ? { email: emailRaw } : {}),
           ...(pwdRaw.length >= 8 ? { password: pwdRaw } : {}),
         });
@@ -5303,7 +5312,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           action: 'إضافة موظف جديد',
           entityType: 'user',
           entityId: created.id,
-          details: `${created.name} - ${created.role}${isRep ? ` - مرتب أساسي ${employee.baseSalary ?? 0}` : ''}`,
+          details: `${created.name} - ${created.role}${hasPayrollSalary ? ` - مرتب أساسي ${employee.baseSalary ?? 0}` : ''}`,
         });
         return true;
       } catch (e: unknown) {
@@ -5388,7 +5397,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           details: `${normalized.name} - ${v} ج.م`,
         });
         return true;
-      } catch {
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'تعذر حفظ الراتب على السيرفر';
+        toast.error(msg);
         if (prevUser) setUsers((prev) => prev.map((u) => (u.id === userId ? prevUser : u)));
         return false;
       }
@@ -5432,7 +5443,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (em && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) p.email = em;
         }
         const effectiveRole = patch.role ?? target.role;
-        if (patch.baseSalary != null && effectiveRole === 'مندوب') {
+        const payrollSalaryRoles: User['role'][] = ['مندوب', 'محاسب', 'مدير مبيعات', 'مدير إنتاج'];
+        const cannotSetSalaryOnOtherOwner = target.role === 'مالك' && target.id !== currentUser.id;
+        if (
+          patch.baseSalary != null &&
+          payrollSalaryRoles.includes(effectiveRole) &&
+          !cannotSetSalaryOnOtherOwner
+        ) {
           p.baseSalary = Math.max(0, Math.round(Number(patch.baseSalary) || 0));
         }
         return Object.keys(p).length > 0 ? p : null;
@@ -5500,12 +5517,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             avatar: nextAvatar || u.avatar,
             role: nextRole,
             skills: nextRole === 'مندوب' ? (u.skills || []) : [],
-            baseSalary:
-              nextRole === 'مندوب'
-                ? patch.baseSalary != null
-                  ? Math.max(0, Math.round(Number(patch.baseSalary) || 0))
-                  : (u.baseSalary ?? 0)
-                : undefined,
+            baseSalary: (() => {
+              const payrollSalaryRoles: User['role'][] = ['مندوب', 'محاسب', 'مدير مبيعات', 'مدير إنتاج'];
+              if (!payrollSalaryRoles.includes(nextRole)) return undefined;
+              return patch.baseSalary != null
+                ? Math.max(0, Math.round(Number(patch.baseSalary) || 0))
+                : (u.baseSalary ?? 0);
+            })(),
           };
         }),
       );
@@ -5533,12 +5551,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           avatar: nextAvatar || cu.avatar,
           role: nextRole,
           skills: nextRole === 'مندوب' ? (cu.skills || []) : [],
-          baseSalary:
-            nextRole === 'مندوب'
-              ? patch.baseSalary != null
-                ? Math.max(0, Math.round(Number(patch.baseSalary) || 0))
-                : (cu.baseSalary ?? 0)
-              : undefined,
+          baseSalary: (() => {
+            const payrollSalaryRoles: User['role'][] = ['مندوب', 'محاسب', 'مدير مبيعات', 'مدير إنتاج'];
+            if (!payrollSalaryRoles.includes(nextRole)) return undefined;
+            return patch.baseSalary != null
+              ? Math.max(0, Math.round(Number(patch.baseSalary) || 0))
+              : (cu.baseSalary ?? 0);
+          })(),
         };
       });
       addAuditEvent({

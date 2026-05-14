@@ -73,8 +73,10 @@ router.post('/', requireAuth(), async (req, res) => {
     }
     const passwordHash = await bcrypt.hash(password, 10);
     const skills = Array.isArray(body.skills) ? body.skills : [];
-    const baseSalary =
-      role === 'مندوب' ? Math.max(0, Math.round(Number(body.baseSalary) || 0)) : null;
+    const payrollRolesForSalary = ['مندوب', 'محاسب', 'مدير مبيعات', 'مدير إنتاج'];
+    const baseSalary = payrollRolesForSalary.includes(role)
+      ? Math.max(0, Math.round(Number(body.baseSalary) || 0))
+      : null;
     const user = await prisma.user.create({
       data: {
         email,
@@ -110,8 +112,9 @@ router.patch('/:id', requireAuth(), async (req, res) => {
     const existingRoleN = normalizeUserRole(existing.role);
     const canSalesSkills =
       actor.role === 'مدير مبيعات' && existingRoleN === 'مندوب';
+    const payrollRolesForSalary = ['مندوب', 'محاسب', 'مدير مبيعات', 'مدير إنتاج'];
     const canAccountingSalary =
-      (actor.role === 'محاسب' || actor.role === 'مالك') && existingRoleN === 'مندوب';
+      (actor.role === 'محاسب' || actor.role === 'مالك') && payrollRolesForSalary.includes(existingRoleN);
 
     const patch = req.body || {};
     const data = {};
@@ -153,7 +156,13 @@ router.patch('/:id', requireAuth(), async (req, res) => {
       data.skillsJson = Array.isArray(patch.skills) ? patch.skills : [];
     }
     if (patch.baseSalary != null) {
+      if (existingRoleN === 'مالك' && existing.id !== actor.id) {
+        return res.status(403).json({ error: 'لا يمكن تعديل راتب مالك آخر' });
+      }
       if (!canAccountingSalary && !canOwner) return res.status(403).json({ error: 'غير مصرح' });
+      if (!payrollRolesForSalary.includes(existingRoleN) && !(existingRoleN === 'مالك' && existing.id === actor.id)) {
+        return res.status(400).json({ error: 'لا يُخزَّن راتب أساسي لهذا الدور' });
+      }
       data.baseSalary = Math.max(0, Math.round(Number(patch.baseSalary) || 0));
     }
     if (patch.stats != null && typeof patch.stats === 'object') {
