@@ -9,16 +9,33 @@ import {
   Plus,
   History,
   MoreVertical,
+  Trash2,
 } from 'lucide-react';
 import { motion as Motion } from 'motion/react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useData } from '../context/DataContext';
 
 const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
 export default function EquipmentPage() {
-  const { equipmentItems } = useData();
+  const { equipmentItems, removeEquipmentItem, currentUser } = useData();
   const [searchTerm, setSearchTerm] = useState('');
+  const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+  const menuRef = useRef<HTMLDivElement | null>(null);
+
+  const canManageEquipment =
+    currentUser?.role === 'مالك' || currentUser?.role === 'محاسب' || currentUser?.role === 'مدير إنتاج';
+
+  useEffect(() => {
+    if (!openMenuId) return;
+    const onDown = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setOpenMenuId(null);
+      }
+    };
+    document.addEventListener('mousedown', onDown);
+    return () => document.removeEventListener('mousedown', onDown);
+  }, [openMenuId]);
 
   const filtered = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
@@ -109,9 +126,43 @@ export default function EquipmentPage() {
                       <h3 className="text-base font-bold text-white mb-1">{item.name}</h3>
                       <p className="text-xs text-zinc-500 font-medium">الكمية: {item.totalQuantity}</p>
                     </div>
-                    <button type="button" className="p-1.5 text-zinc-600 hover:text-white transition-all">
-                      <MoreVertical className="h-4 w-4" />
-                    </button>
+                    {canManageEquipment ? (
+                      <div className="relative shrink-0" ref={openMenuId === item.id ? menuRef : null}>
+                        <button
+                          type="button"
+                          aria-expanded={openMenuId === item.id}
+                          aria-haspopup="menu"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setOpenMenuId((id) => (id === item.id ? null : item.id));
+                          }}
+                          className="p-1.5 text-zinc-500 hover:text-white hover:bg-zinc-800/80 rounded-lg transition-all"
+                        >
+                          <MoreVertical className="h-4 w-4" />
+                        </button>
+                        {openMenuId === item.id ? (
+                          <div
+                            role="menu"
+                            className="absolute end-0 top-full z-50 mt-1 min-w-[168px] rounded-xl border border-zinc-700 bg-[#0c0c0e] py-1 shadow-xl shadow-black/50"
+                          >
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="flex w-full items-center gap-2 px-3 py-2.5 text-right text-sm text-rose-300 hover:bg-rose-500/10 transition-colors"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setOpenMenuId(null);
+                                if (!window.confirm(`حذف «${item.name}» نهائياً من قائمة المعدات؟`)) return;
+                                removeEquipmentItem(item.id);
+                              }}
+                            >
+                              <Trash2 className="h-4 w-4 shrink-0 opacity-90" />
+                              حذف المعدة
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="flex items-center justify-between pt-4 border-t border-zinc-800/50">

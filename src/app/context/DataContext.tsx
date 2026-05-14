@@ -469,18 +469,26 @@ export interface PersonalTodo {
   dueAt?: string;
   reminder30Emitted?: boolean;
   reminder60Emitted?: boolean;
+  /** بعد إطلاق تنبيه «حان الموعد» (نافذة + صوت) لا يتكرر */
+  dueAlarmEmitted?: boolean;
 }
 
 export function normalizePersonalTodos(raw: unknown): PersonalTodo[] {
   if (!Array.isArray(raw)) return [];
-  return raw.map((x: any) => ({
-    id: String(x?.id ?? `todo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
-    text: String(x?.text ?? ''),
-    done: Boolean(x?.done),
-    dueAt: typeof x?.dueAt === 'string' && String(x.dueAt).trim() ? String(x.dueAt).trim() : undefined,
-    reminder30Emitted: Boolean(x?.reminder30Emitted),
-    reminder60Emitted: Boolean(x?.reminder60Emitted),
-  }));
+  return raw.map((x: any) => {
+    const dueAt =
+      typeof x?.dueAt === 'string' && String(x.dueAt).trim() ? String(x.dueAt).trim() : undefined;
+
+    return {
+      id: String(x?.id ?? `todo-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
+      text: String(x?.text ?? ''),
+      done: Boolean(x?.done),
+      dueAt,
+      reminder30Emitted: Boolean(x?.reminder30Emitted),
+      reminder60Emitted: Boolean(x?.reminder60Emitted),
+      dueAlarmEmitted: Boolean(x?.dueAlarmEmitted),
+    };
+  });
 }
 
 function normalizePersonalTodosByUserId(raw: unknown): Record<string, PersonalTodo[]> {
@@ -506,7 +514,18 @@ function mergePersonalTodosByUserId(
     const byId = new Map<string, PersonalTodo>();
     for (const t of remote) byId.set(t.id, t);
     for (const t of local) {
-      if (!byId.has(t.id)) byId.set(t.id, t);
+      const r = byId.get(t.id);
+      if (!r) {
+        byId.set(t.id, t);
+        continue;
+      }
+      /** السيرفر قد لا يُعيد حقول التذكير؛ ندمج بـ OR حتى لا يُعاد التنبيه بعد كل PATCH */
+      byId.set(t.id, {
+        ...r,
+        reminder30Emitted: Boolean(r.reminder30Emitted) || Boolean(t.reminder30Emitted),
+        reminder60Emitted: Boolean(r.reminder60Emitted) || Boolean(t.reminder60Emitted),
+        dueAlarmEmitted: Boolean(r.dueAlarmEmitted) || Boolean(t.dueAlarmEmitted),
+      });
     }
     out[uid] = normalizePersonalTodos([...byId.values()]);
   }
@@ -573,7 +592,19 @@ function mergeDisplayedPersonalTodos(
   }
   for (const t of fromMap) {
     const tx = String(t.text ?? '').trim();
-    if (tx) byId.set(t.id, { ...t, text: tx });
+    if (!tx) continue;
+    const prev = byId.get(t.id);
+    if (prev) {
+      byId.set(t.id, {
+        ...t,
+        text: tx,
+        reminder30Emitted: Boolean(prev.reminder30Emitted) || Boolean(t.reminder30Emitted),
+        reminder60Emitted: Boolean(prev.reminder60Emitted) || Boolean(t.reminder60Emitted),
+        dueAlarmEmitted: Boolean(prev.dueAlarmEmitted) || Boolean(t.dueAlarmEmitted),
+      });
+    } else {
+      byId.set(t.id, { ...t, text: tx });
+    }
   }
   return normalizePersonalTodos([...byId.values()]);
 }
@@ -1065,7 +1096,9 @@ interface DataContextType {
   manualCustomers: ManualCustomer[];
   addManualCustomer: (payload: { name: string; company?: string; phone?: string; email?: string; sourceLabel?: string }) => Promise<boolean>;
   updateEmployeeSalary: (userId: string, baseSalary: number) => Promise<boolean>;
-  updateEmployeeProfile: (userId: string, patch: { name?: string; avatar?: string; role?: User['role'] }) => Promise<boolean>;
+  updateEmployeeProfile: (userId: string, patch: { name?: string; avatar?: string; role?: User['role']; email?: string }) => Promise<boolean>;
+  /** المالك يعيّن كلمة مرور جديدة لموظف (خادم Prisma). في وضع Supabase المباشر استخدم لوحة Supabase → Authentication. */
+  ownerSetEmployeePassword: (userId: string, newPassword: string) => Promise<boolean>;
   removeEmployee: (userId: string) => Promise<boolean>;
   getLeadScore: (lead: Partial<Lead>) => number;
   refreshSLA: () => void;
@@ -1157,6 +1190,7 @@ interface DataContextType {
   addEquipmentBooking: (booking: Omit<EquipmentBooking, 'id' | 'repId' | 'repName' | 'createdAt' | 'status'>) => Promise<boolean>;
   addMeetingBooking: (booking: Omit<MeetingBooking, 'id' | 'repId' | 'repName' | 'createdAt'>) => Promise<boolean>;
   addEquipmentItem: (item: Omit<EquipmentItem, 'id' | 'createdAt' | 'active'>) => boolean;
+  removeEquipmentItem: (id: string) => boolean;
   updateShootBookingStatus: (id: string, status: ShootBooking['status']) => Promise<boolean>;
   updateEquipmentBookingStatus: (id: string, status: EquipmentBooking['status']) => Promise<boolean>;
   updateMeetingBookingStatus: (id: string, status: NonNullable<MeetingBooking['status']>) => Promise<boolean>;
@@ -5361,7 +5395,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const updateEmployeeProfile = async (
     userId: string,
-    patch: { name?: string; avatar?: string; role?: User['role'] }
+    patch: { name?: string; avatar?: string; role?: User['role']; email?: string }
   ): Promise<boolean> => {
     if (!currentUser) return false;
     const target = users.find((u) => u.id === userId);
@@ -5379,6 +5413,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (typeof patch.name === 'string' && patch.name.trim()) p.name = patch.name.trim();
         if (patch.role) p.role = patch.role;
         if (patch.avatar !== undefined) p.avatar = patch.avatar ? patch.avatar.trim() : null;
+        if (typeof patch.email === 'string') {
+          const em = patch.email.trim().toLowerCase();
+          if (em && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) p.email = em;
+        }
         return Object.keys(p).length > 0 ? p : null;
       }
       const p: Parameters<typeof patchUserApi>[1] = {};
@@ -5389,7 +5427,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
     const auditDetails = `${patch.name ? `name=${patch.name};` : ''}${patch.role ? `role=${patch.role};` : ''}${
       patch.avatar !== undefined ? 'avatar=updated;' : ''
-    }`;
+    }${typeof patch.email === 'string' ? `email=${patch.email.trim()};` : ''}`;
 
     if (isServerDataMode()) {
       const apiPatch = buildApiPatch();
@@ -5409,34 +5447,43 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           details: auditDetails,
         });
         return true;
-      } catch {
+      } catch (e: unknown) {
+        const msg = e instanceof Error ? e.message : 'تعذر حفظ التعديل على السيرفر';
+        toast.error(msg);
         return false;
       }
     }
 
     if (isOwner) {
       let applied = false;
-      setUsers((prev) => prev.map((u) => {
-        if (u.id !== userId) return u;
-        const nextRole = patch.role || u.role;
-        const nextName = typeof patch.name === 'string' ? patch.name.trim() : u.name;
-        const nextAvatar =
-          patch.avatar !== undefined
-            ? typeof patch.avatar === 'string'
-              ? patch.avatar.trim()
-              : u.avatar
-            : u.avatar;
-        if (!nextName) return u;
-        applied = true;
-        return {
-          ...u,
-          name: nextName,
-          avatar: nextAvatar || u.avatar,
-          role: nextRole,
-          skills: nextRole === 'مندوب' ? (u.skills || []) : [],
-          baseSalary: nextRole === 'مندوب' ? (u.baseSalary ?? 0) : undefined,
-        };
-      }));
+      setUsers((prev) =>
+        prev.map((u) => {
+          if (u.id !== userId) return u;
+          const nextRole = patch.role || u.role;
+          const nextName = typeof patch.name === 'string' ? patch.name.trim() : u.name;
+          const nextAvatar =
+            patch.avatar !== undefined
+              ? typeof patch.avatar === 'string'
+                ? patch.avatar.trim()
+                : u.avatar
+              : u.avatar;
+          const nextEmail =
+            typeof patch.email === 'string' && patch.email.trim()
+              ? patch.email.trim().toLowerCase()
+              : u.email;
+          if (!nextName) return u;
+          applied = true;
+          return {
+            ...u,
+            name: nextName,
+            email: nextEmail,
+            avatar: nextAvatar || u.avatar,
+            role: nextRole,
+            skills: nextRole === 'مندوب' ? (u.skills || []) : [],
+            baseSalary: nextRole === 'مندوب' ? (u.baseSalary ?? 0) : undefined,
+          };
+        }),
+      );
       if (!applied) return false;
       setCurrentUserState((cu) => {
         if (readSessionSignedOut()) return cu;
@@ -5449,10 +5496,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               ? patch.avatar.trim()
               : cu.avatar
             : cu.avatar;
+        const nextEmail =
+          typeof patch.email === 'string' && patch.email.trim()
+            ? patch.email.trim().toLowerCase()
+            : cu.email;
         if (!nextName) return cu;
         return {
           ...cu,
           name: nextName,
+          email: nextEmail,
           avatar: nextAvatar || cu.avatar,
           role: nextRole,
           skills: nextRole === 'مندوب' ? (cu.skills || []) : [],
@@ -5497,6 +5549,50 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       details: auditDetails,
     });
     return true;
+  };
+
+  const ownerSetEmployeePassword = async (userId: string, newPassword: string): Promise<boolean> => {
+    if (currentUser?.role !== 'مالك') {
+      toast.error('تعيين باسورد الموظف متاح للمالك فقط');
+      return false;
+    }
+    if (currentUser.id === userId) {
+      toast.info('استخدم قسم «كلمة مرور حساب المالك» أعلاه لتغيير باسوردك');
+      return false;
+    }
+    const target = users.find((u) => u.id === userId);
+    if (!target) {
+      toast.error('لم يُعثر على الموظف');
+      return false;
+    }
+    if (target.role === 'مالك') {
+      toast.error('لا يمكن تغيير كلمة مرور حساب مالك آخر من هنا');
+      return false;
+    }
+    const pwd = String(newPassword || '').trim();
+    if (pwd.length < 8) {
+      toast.error('كلمة المرور ٨ أحرف أو أكثر');
+      return false;
+    }
+    if (!isServerDataMode()) {
+      toast.error('غير متاح في الوضع المحلي بدون سيرفر');
+      return false;
+    }
+    try {
+      await patchUserApi(userId, { newPassword: pwd });
+      addAuditEvent({
+        action: 'تعيين كلمة مرور موظف (مالك)',
+        entityType: 'user',
+        entityId: userId,
+        details: target.name,
+      });
+      toast.success('تم تحديث كلمة مرور الموظف');
+      return true;
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : 'تعذر تحديث كلمة المرور';
+      toast.error(msg);
+      return false;
+    }
   };
 
   const removeEmployee = async (userId: string): Promise<boolean> => {
@@ -7603,6 +7699,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   };
 
+  const removeEquipmentItem = (id: string) => {
+    if (!(currentUser?.role === 'مالك' || currentUser?.role === 'محاسب' || currentUser?.role === 'مدير إنتاج')) {
+      toast.error('حذف المعدات متاح للمالك أو المحاسب أو مدير الإنتاج فقط');
+      return false;
+    }
+    const target = equipmentItems.find((e) => e.id === id);
+    if (!target) {
+      toast.error('المعدة غير موجودة');
+      return false;
+    }
+    const name = target.name.trim();
+    const hasBlockingBookings = equipmentBookings.some(
+      (b) => b.equipmentName.trim() === name && (b.status === 'قيد المراجعة' || b.status === 'معتمد'),
+    );
+    if (hasBlockingBookings) {
+      toast.error('لا يمكن الحذف: توجد حجوزات معتمدة أو قيد المراجعة على هذه المعدة');
+      return false;
+    }
+    setEquipmentItems((prev) => {
+      const next = prev.filter((e) => e.id !== id);
+      if (isServerDataMode()) void syncWorkspacePatch({ equipmentItems: next }, () => { setEquipmentItems(prev); });
+      return next;
+    });
+    addAuditEvent({
+      action: 'حذف معدة من قائمة الحجوزات',
+      entityType: 'system',
+      entityId: id,
+      details: name,
+    });
+    toast.success('تم حذف المعدة');
+    return true;
+  };
+
   /** استحقاق مالي بعد اعتماد المالك/المبيعات — يمرّ عبر الإنتاج ثم المحاسب. */
   const createBookingAccrualExpense = async (
     bookingLabel: string,
@@ -9066,7 +9195,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   return (
     <DataContext.Provider value={{ 
       leads, users, manualCustomers, invoices, priceQuotes, accountingPolicy, expenses, currentUser, setCurrentUser: setCurrentUserPublic, addLead, bulkAddLeads, 
-      updateLeadStatus, logLeadInteraction, reviewLeadActivity, setLeadFollowUp, assignLead, deleteLead, updateUserSkills, addEmployee, addManualCustomer, updateEmployeeSalary, updateEmployeeProfile, removeEmployee, getLeadScore, refreshSLA, logout, addInvoice,
+      updateLeadStatus, logLeadInteraction, reviewLeadActivity, setLeadFollowUp, assignLead, deleteLead, updateUserSkills, addEmployee, addManualCustomer, updateEmployeeSalary, updateEmployeeProfile, ownerSetEmployeePassword, removeEmployee, getLeadScore, refreshSLA, logout, addInvoice,
       updateInvoiceStatus, recordInvoiceCollection, addPriceQuote, productionPriceQuote, reassignPricingRequest, approvePriceQuote, rejectPriceQuote, repRecordClientAcceptance, repRecordClientRejection, updateAccountingPolicy, addExpense, updateExpenseStatus, approveExpense, rejectExpense,
       getRepSnapshots, monthlyTargets, updateMonthlyTarget, getPerformanceAlerts, getSlaHeatmap,
       closedMonths, closeMonth, reopenMonth, isMonthClosed,
@@ -9089,7 +9218,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       shootBookings: shootBookings.filter((b) => !deletedShootIdsRef.current.has(b.id)),
       equipmentBookings: equipmentBookings.filter((b) => !deletedEquipIdsRef.current.has(b.id)),
       meetingBookings: meetingBookings.filter((b) => !deletedMeetIdsRef.current.has(b.id)),
-      otherBookings, equipmentItems, addShootBooking, addEquipmentBooking, addMeetingBooking, addOtherBooking, removeOtherBooking, removeShootBooking, removeEquipmentBooking, removeMeetingBooking, addEquipmentItem, updateShootBookingStatus, updateEquipmentBookingStatus, updateMeetingBookingStatus, accountantExecuteShootBookingClaim, accountantExecuteEquipmentBookingClaim, accountantExecuteMeetingBookingClaim, productionSubmitBookingSpendToAccountant,
+      otherBookings, equipmentItems, addShootBooking, addEquipmentBooking, addMeetingBooking, addOtherBooking, removeOtherBooking, removeShootBooking, removeEquipmentBooking, removeMeetingBooking, addEquipmentItem, removeEquipmentItem, updateShootBookingStatus, updateEquipmentBookingStatus, updateMeetingBookingStatus, accountantExecuteShootBookingClaim, accountantExecuteEquipmentBookingClaim, accountantExecuteMeetingBookingClaim, productionSubmitBookingSpendToAccountant,
       printBrandingSettings, updatePrintBrandingSettings,
       leadIngestionSettings, updateLeadIngestionSettings,
       slaEscalationSettings, updateSlaEscalationSettings,

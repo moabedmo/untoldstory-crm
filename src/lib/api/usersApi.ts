@@ -49,11 +49,14 @@ export async function patchUserApi(
   id: string,
   patch: Partial<{
     name: string;
+    email: string;
     role: import('@/app/context/DataContext').User['role'];
     avatar: string | null;
     skills: import('@/app/context/DataContext').LeadCategory[];
     baseSalary: number;
     stats: import('@/app/context/DataContext').User['stats'];
+    /** تعيين كلمة مرور جديدة (خادم Express + Prisma) — المالك فقط؛ ٨ أحرف فأكثر */
+    newPassword: string;
   }>
 ): Promise<import('@/app/context/DataContext').User> {
   if (isSupabaseDirectMode()) return patchUserSb(id, patch);

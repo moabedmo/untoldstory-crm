@@ -35,6 +35,7 @@ import {
   SystemNotification,
   DeleteLeadResult,
   canonicalTodoUserId,
+  PersonalTodo,
   BookingSpendLine,
   custodyFundBelongsToProductionManager,
 } from './context/DataContext';
@@ -95,6 +96,59 @@ function notifyDesktopPersonalTask(title: string, body: string, tag: string, sho
     };
   } catch {
     // تجاهل (سياقة غير آمنة أو حظر المتصفّح)
+  }
+}
+
+/** نغمة تنبيه موعد المهمة — Web Audio مع resume + اهتزاز على الجوال */
+async function playPersonalTodoDueBeep(): Promise<void> {
+  try {
+    if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+      navigator.vibrate([100, 60, 100, 60, 200, 60, 400]);
+    }
+  } catch {
+    /* ignore */
+  }
+  try {
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return;
+    const ctx = new Ctx();
+    try {
+      if (ctx.state === 'suspended') await ctx.resume();
+    } catch {
+      /* قد يفشل بدون تفاعل مستخدم — نكمل المحاولة */
+    }
+    const master = ctx.createGain();
+    master.gain.value = 0.32;
+    master.connect(ctx.destination);
+    const playTone = (freq: number, start: number, dur: number, wave: OscillatorType = 'square') => {
+      const osc = ctx.createOscillator();
+      osc.type = wave;
+      const env = ctx.createGain();
+      env.gain.setValueAtTime(0.001, start);
+      env.gain.exponentialRampToValueAtTime(0.85, start + 0.025);
+      env.gain.exponentialRampToValueAtTime(0.001, start + dur);
+      osc.frequency.value = freq;
+      osc.connect(env);
+      env.connect(master);
+      osc.start(start);
+      osc.stop(start + dur + 0.03);
+    };
+    const t0 = ctx.currentTime;
+    for (let round = 0; round < 3; round++) {
+      const b = round * 0.42;
+      playTone(784, t0 + b, 0.12);
+      playTone(988, t0 + b + 0.14, 0.12);
+      playTone(1175, t0 + b + 0.28, 0.14);
+    }
+    window.setTimeout(() => {
+      try {
+        void ctx.close();
+      } catch {
+        /* ignore */
+      }
+    }, 2200);
+  } catch {
+    /* حظر التشغيل التلقائي أو غياب Web Audio */
   }
 }
 const REP_INTERACTION_PLAYBOOKS: Record<'call' | 'chat' | 'other', { id: string; label: string; text: string }[]> = {
@@ -4453,6 +4507,7 @@ const SalesManagerSettings = ({
     updateUserSkills,
     addEmployee,
     updateEmployeeProfile,
+    ownerSetEmployeePassword,
     removeEmployee,
     printBrandingSettings,
     updatePrintBrandingSettings,
@@ -4474,6 +4529,9 @@ const SalesManagerSettings = ({
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const logoInputRef = useRef<HTMLInputElement | null>(null);
   const canEditBranding = currentUser?.role === 'مالك';
+  /** تعديل صف موظف من الجدول (لا يشمل حساب مالك آخر غير المستخدم الحالي) */
+  const canOwnerEditEmployeeRow = (em: User) =>
+    Boolean(canEditBranding && !(em.role === 'مالك' && em.id !== currentUser?.id));
 
   const skillOptions: LeadCategory[] = ['إنجليزي', 'شركات كبرى', 'شركات صغيرة', 'إعلانات', 'سوشيال ميديا'];
   const roleOptions: User['role'][] = ['مدير مبيعات', 'محاسب', 'مندوب', 'مدير إنتاج'];
@@ -4484,7 +4542,10 @@ const SalesManagerSettings = ({
     loginEmail: '',
     password: '',
   });
-  const [employeeEdits, setEmployeeEdits] = useState<Record<string, { name: string; role: User['role']; avatar: string }>>({});
+  const [employeeEdits, setEmployeeEdits] = useState<
+    Record<string, { name: string; role: User['role']; avatar: string; email: string }>
+  >({});
+  const [employeePwDraft, setEmployeePwDraft] = useState<Record<string, { pw: string; pw2: string }>>({});
   const [ownerPwdCurrent, setOwnerPwdCurrent] = useState('');
   const [ownerPwdNew, setOwnerPwdNew] = useState('');
   const [ownerPwdConfirm, setOwnerPwdConfirm] = useState('');
@@ -4685,7 +4746,9 @@ const SalesManagerSettings = ({
       if (userId) {
         const user = users.find((u) => u.id === userId);
         if (!user) return;
-        const draft = employeeEdits[userId] || { name: user.name, role: user.role, avatar: user.avatar || '' };
+        const draft =
+          employeeEdits[userId] ||
+          { name: user.name, role: user.role, avatar: user.avatar || '', email: (user.email || '').trim() };
         setEmployeeEdits((prev) => ({ ...prev, [userId]: { ...draft, avatar: avatarDataUrl } }));
       } else {
         setNewEmployee((prev) => ({ ...prev, avatar: avatarDataUrl }));
@@ -4749,7 +4812,10 @@ const SalesManagerSettings = ({
   const ensureEdit = (u: User) => {
     setEmployeeEdits((prev) => {
       if (prev[u.id]) return prev;
-      return { ...prev, [u.id]: { name: u.name, role: u.role, avatar: u.avatar || '' } };
+      return {
+        ...prev,
+        [u.id]: { name: u.name, role: u.role, avatar: u.avatar || '', email: (u.email || '').trim() },
+      };
     });
   };
 
@@ -4786,13 +4852,18 @@ const SalesManagerSettings = ({
   const handleSaveEmployee = async (userId: string) => {
     const draft = employeeEdits[userId];
     if (!draft) return;
+    const emailTrim = (draft.email || '').trim().toLowerCase();
+    if (canEditBranding && emailTrim && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailTrim)) {
+      toast.error('صيغة البريد غير صالحة');
+      return;
+    }
     const ok = await updateEmployeeProfile(userId, {
       name: draft.name,
       role: draft.role,
       avatar: draft.avatar,
+      ...(canEditBranding ? { email: draft.email } : {}),
     });
     if (!ok) {
-      toast.error('تعذر حفظ التعديل');
       return;
     }
     toast.success('تم تحديث بيانات الموظف');
@@ -4804,6 +4875,28 @@ const SalesManagerSettings = ({
     const ok = await removeEmployee(userId);
     if (!ok) return;
     toast.success('تم حذف الموظف');
+  };
+
+  const handleSaveEmployeePassword = async (userId: string) => {
+    const d = employeePwDraft[userId];
+    if (!d?.pw || d.pw.length < 8) {
+      toast.error('كلمة المرور ٨ أحرف أو أكثر');
+      return;
+    }
+    if (d.pw !== d.pw2) {
+      toast.error('تأكيد كلمة المرور غير متطابق');
+      return;
+    }
+    const yes = window.confirm('تأكيد تعيين كلمة مرور جديدة لهذا الموظف؟ سيستخدمها في تسجيل الدخول القادم.');
+    if (!yes) return;
+    const ok = await ownerSetEmployeePassword(userId, d.pw);
+    if (ok) {
+      setEmployeePwDraft((prev) => {
+        const next = { ...prev };
+        delete next[userId];
+        return next;
+      });
+    }
   };
 
   const handleChangeOwnerPassword = async () => {
@@ -5195,7 +5288,7 @@ const SalesManagerSettings = ({
           </div>
         )}
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[1100px] text-right">
+          <table className="w-full min-w-[1280px] text-right">
             <thead>
               <tr className="bg-[#0B1020]/80">
                 <th className="p-3 text-[10px] uppercase tracking-widest text-zinc-400">الاسم</th>
@@ -5204,45 +5297,77 @@ const SalesManagerSettings = ({
                 <th className="p-3 text-[10px] uppercase tracking-widest text-zinc-400">الصورة</th>
                 <th className="p-3 text-[10px] uppercase tracking-widest text-zinc-400">الراتب الأساسي</th>
                 <th className="p-3 text-[10px] uppercase tracking-widest text-zinc-400">حالة مهارات التوزيع</th>
+                {canEditBranding && (
+                  <th className="p-3 text-[10px] uppercase tracking-widest text-zinc-400 min-w-[170px]">باسورد جديد</th>
+                )}
                 {canEditBranding && <th className="p-3 text-[10px] uppercase tracking-widest text-zinc-400">إجراءات المالك</th>}
               </tr>
             </thead>
             <tbody className="divide-y divide-white/10">
               {users.map((employee) => {
-                const draft = employeeEdits[employee.id] || { name: employee.name, role: employee.role, avatar: employee.avatar || '' };
+                const draft =
+                  employeeEdits[employee.id] || {
+                    name: employee.name,
+                    role: employee.role,
+                    avatar: employee.avatar || '',
+                    email: (employee.email || '').trim(),
+                  };
                 return (
                   <tr key={employee.id} className={trafficRowClass(employee.role === 'مندوب' ? (employee.skills.length > 0 ? 'safe' : 'warn') : 'neutral')}>
                     <td className="p-3 font-bold">
-                      {canEditBranding && employee.id !== 'u1' ? (
+                      {canOwnerEditEmployeeRow(employee) ? (
                         <input
                           value={draft.name}
                           onFocus={() => ensureEdit(employee)}
                           onChange={(e) => setEmployeeEdits((prev) => ({ ...prev, [employee.id]: { ...draft, name: e.target.value } }))}
                           className="bg-[#0F1528] border border-white/10 rounded-lg px-2 py-1 text-xs w-full"
                         />
-                      ) : employee.name}
+                      ) : (
+                        employee.name
+                      )}
                     </td>
-                    <td className="p-3 max-w-[200px] align-top">
-                      <span dir="ltr" className="text-[11px] text-zinc-300 font-mono break-all block">
-                        {employee.authSource === 'database' && employee.email?.trim()
-                          ? employee.email.trim()
-                          : '—'}
-                      </span>
+                    <td className="p-3 max-w-[220px] align-top">
+                      {canOwnerEditEmployeeRow(employee) ? (
+                        <input
+                          type="email"
+                          dir="ltr"
+                          autoComplete="off"
+                          value={draft.email}
+                          onFocus={() => ensureEdit(employee)}
+                          onChange={(e) =>
+                            setEmployeeEdits((prev) => ({ ...prev, [employee.id]: { ...draft, email: e.target.value } }))
+                          }
+                          className="bg-[#0F1528] border border-white/10 rounded-lg px-2 py-1.5 text-[11px] font-mono w-full"
+                          placeholder="email@example.com"
+                        />
+                      ) : (
+                        <span dir="ltr" className="text-[11px] text-zinc-300 font-mono break-all block">
+                          {employee.authSource === 'database' && employee.email?.trim()
+                            ? employee.email.trim()
+                            : '—'}
+                        </span>
+                      )}
                     </td>
                     <td className="p-3">
-                      {canEditBranding && employee.id !== 'u1' ? (
+                      {canOwnerEditEmployeeRow(employee) ? (
                         <select
                           value={draft.role}
                           onFocus={() => ensureEdit(employee)}
                           onChange={(e) => setEmployeeEdits((prev) => ({ ...prev, [employee.id]: { ...draft, role: e.target.value as User['role'] } }))}
                           className="bg-[#0F1528] border border-white/10 rounded-lg px-2 py-1 text-xs"
                         >
-                          {roleOptions.map((r) => <option key={r} value={r}>{r}</option>)}
+                          {roleOptions.map((r) => (
+                            <option key={r} value={r}>
+                              {r}
+                            </option>
+                          ))}
                         </select>
-                      ) : employee.role}
+                      ) : (
+                        employee.role
+                      )}
                     </td>
                     <td className="p-3">
-                      {canEditBranding && employee.id !== 'u1' ? (
+                      {canOwnerEditEmployeeRow(employee) ? (
                         <div className="flex items-center gap-2">
                           <img src={draft.avatar || employee.avatar} alt="" className="w-9 h-9 rounded-lg object-cover border border-white/15" />
                           <label className="px-2 py-1 rounded-lg text-[11px] border border-white/15 bg-[#0F1528] cursor-pointer">
@@ -5271,10 +5396,53 @@ const SalesManagerSettings = ({
                         : 'غير مطلوب'}
                     </td>
                     {canEditBranding && (
+                      <td className="p-3 align-top">
+                        {!canOwnerEditEmployeeRow(employee) || employee.id === currentUser?.id ? (
+                          <span className="text-[10px] text-zinc-600">—</span>
+                        ) : (
+                          <div className="flex flex-col gap-1.5 min-w-[150px]">
+                            <input
+                              type="password"
+                              autoComplete="new-password"
+                              value={employeePwDraft[employee.id]?.pw ?? ''}
+                              onChange={(e) =>
+                                setEmployeePwDraft((prev) => ({
+                                  ...prev,
+                                  [employee.id]: { pw: e.target.value, pw2: prev[employee.id]?.pw2 ?? '' },
+                                }))
+                              }
+                              placeholder="جديدة (٨+)"
+                              className="bg-[#0F1528] border border-white/10 rounded-lg px-2 py-1.5 text-[11px] w-full"
+                            />
+                            <input
+                              type="password"
+                              autoComplete="new-password"
+                              value={employeePwDraft[employee.id]?.pw2 ?? ''}
+                              onChange={(e) =>
+                                setEmployeePwDraft((prev) => ({
+                                  ...prev,
+                                  [employee.id]: { pw: prev[employee.id]?.pw ?? '', pw2: e.target.value },
+                                }))
+                              }
+                              placeholder="تأكيد"
+                              className="bg-[#0F1528] border border-white/10 rounded-lg px-2 py-1.5 text-[11px] w-full"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => void handleSaveEmployeePassword(employee.id)}
+                              className="px-2 py-1.5 rounded-lg text-[11px] font-black border border-amber-400/35 text-amber-100 bg-amber-500/15 hover:bg-amber-500/25 transition-colors"
+                            >
+                              حفظ الباسورد
+                            </button>
+                          </div>
+                        )}
+                      </td>
+                    )}
+                    {canEditBranding && (
                       <td className="p-3">
-                        {employee.id === 'u1' || employee.role === 'مالك' ? (
+                        {employee.role === 'مالك' || employee.id === currentUser?.id ? (
                           <span className="text-[11px] text-zinc-500">
-                            {employee.id === 'u1' ? 'المالك الأساسي — لا يُحذف' : 'حساب مالك — لا يُحذف'}
+                            {employee.id === currentUser?.id ? 'حسابك الحالي — لا يُحذف من الجدول' : 'حساب مالك — لا يُحذف'}
                           </span>
                         ) : (
                           <div className="flex items-center gap-2">
@@ -10035,11 +10203,23 @@ const Root = () => {
   const [commandQuery, setCommandQuery] = useState('');
   const restoreInputRef = useRef<HTMLInputElement | null>(null);
   const [todoInput, setTodoInput] = useState('');
-  const [todoDueInput, setTodoDueInput] = useState('');
+  /** تاريخ/وقت منفصلان — أوثق من datetime-local على ويندوز والوضع الداكن */
+  const [todoDueDate, setTodoDueDate] = useState('');
+  const [todoDueTime, setTodoDueTime] = useState('');
+  const [personalTodoDueAlarm, setPersonalTodoDueAlarm] = useState<PersonalTodo[] | null>(null);
   const desktopNotifyWhenVisibleRef = useRef(desktopNotifyWhenVisible);
   useEffect(() => {
     desktopNotifyWhenVisibleRef.current = desktopNotifyWhenVisible;
   }, [desktopNotifyWhenVisible]);
+
+  useEffect(() => {
+    if (!personalTodoDueAlarm?.length) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setPersonalTodoDueAlarm(null);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [personalTodoDueAlarm]);
 
   const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
   const parallaxFrameRef = useRef<number | null>(null);
@@ -10527,17 +10707,27 @@ const Root = () => {
     todayMeetingsCount,
   ]);
 
-  /** تذكيرات قبل الموعد بنصف ساعة وساعة (توست + إظهار في مركز التنبيهات) */
+  /** تذكيرات قبل الموعد + عند حلول الموعد (نافذة وصوت) + توست ومركز التنبيهات */
   useEffect(() => {
     if (!currentUser) return;
     const runReminderPass = () => {
+      let dueJustHit: PersonalTodo[] = [];
       setPersonalTodos((prev) => {
         let changed = false;
+        const nowMs = Date.now();
         const next = prev.map((t) => {
           if (t.done || !t.dueAt) return t;
           const due = new Date(t.dueAt).getTime();
-          const nowMs = Date.now();
-          if (!Number.isFinite(due) || due <= nowMs) return t;
+          if (!Number.isFinite(due)) return t;
+
+          if (due <= nowMs && !t.dueAlarmEmitted) {
+            dueJustHit.push(t);
+            changed = true;
+            return { ...t, dueAlarmEmitted: true };
+          }
+
+          if (due <= nowMs) return t;
+
           const msUntil = due - nowMs;
           if (msUntil <= 30 * 60 * 1000 && !t.reminder30Emitted) {
             const dt = new Date(t.dueAt).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' });
@@ -10568,9 +10758,31 @@ const Root = () => {
         });
         return changed ? next : prev;
       });
+      if (dueJustHit.length > 0) {
+        const lines = dueJustHit.map((t) => {
+          const dt = t.dueAt
+            ? new Date(t.dueAt).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })
+            : '';
+          return `«${t.text}»${dt ? ` — ${dt}` : ''}`;
+        });
+        toast.info(`حان موعد المهمة: ${lines.join(' · ')}`, { duration: 20_000, id: `todo-due-${dueJustHit.map((t) => t.id).join('-')}` });
+        for (const t of dueJustHit) {
+          const dt = t.dueAt
+            ? new Date(t.dueAt).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })
+            : '';
+          notifyDesktopPersonalTask(
+            'حان موعد مهمة شخصية',
+            `«${t.text}»${dt ? ` — ${dt}` : ''}`,
+            `todo-dsk-due-${t.id}`,
+            desktopNotifyWhenVisibleRef.current,
+          );
+        }
+        playPersonalTodoDueBeep().catch(() => {});
+        setPersonalTodoDueAlarm(dueJustHit);
+      }
     };
     runReminderPass();
-    const id = window.setInterval(runReminderPass, 30_000);
+    const id = window.setInterval(runReminderPass, 5_000);
     return () => clearInterval(id);
   }, [currentUser?.id]);
 
@@ -10711,6 +10923,51 @@ const Root = () => {
   return (
     <div className={`system-theme ${uiVisualMode === 'premium' ? 'premium-shell cinematic-production' : 'ui-classic'} ${isNotificationsOpen ? 'notifications-open' : ''} ${roleClass} tab-${activeTab} flex min-h-screen bg-[#080B13] text-slate-100 font-['Cairo'] overflow-x-hidden`} dir="rtl">
       <BulkUploadModal isOpen={isBulkModalOpen} onClose={() => setIsBulkModalOpen(false)} />
+      {personalTodoDueAlarm && personalTodoDueAlarm.length > 0
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-[2147483000] flex items-center justify-center p-4 bg-black/75 backdrop-blur-md isolate pointer-events-auto"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="personal-todo-alarm-title"
+            >
+              <div className="w-full max-w-md rounded-2xl border border-rose-400/50 bg-[#0f1528] shadow-[0_24px_80px_rgba(0,0,0,0.55)] p-6 text-right ring-2 ring-rose-500/30">
+                <p id="personal-todo-alarm-title" className="text-lg font-black text-rose-100 mb-2">
+                  حان موعد المهمة
+                </p>
+                <ul className="space-y-3 mb-6 max-h-[40vh] overflow-y-auto custom-scrollbar">
+                  {personalTodoDueAlarm.map((t) => (
+                    <li key={t.id} className="text-sm text-zinc-100 border border-white/10 rounded-xl px-3 py-2 bg-white/5">
+                      <span className="font-bold block">«{t.text}»</span>
+                      {t.dueAt ? (
+                        <span className="text-[11px] text-amber-200/90 mt-1 block">
+                          {new Date(t.dueAt).toLocaleString('ar-EG', { dateStyle: 'short', timeStyle: 'short' })}
+                        </span>
+                      ) : null}
+                    </li>
+                  ))}
+                </ul>
+                <div className="flex flex-col gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void playPersonalTodoDueBeep()}
+                    className="w-full py-2.5 rounded-xl border border-amber-400/40 bg-amber-500/15 text-amber-100 text-sm font-bold hover:bg-amber-500/25 transition-colors"
+                  >
+                    تشغيل الصوت مرة أخرى
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPersonalTodoDueAlarm(null)}
+                    className="w-full py-3 rounded-xl bg-gradient-to-r from-rose-500/40 to-rose-400/25 border border-rose-300/50 text-rose-50 font-black text-sm hover:from-rose-500/55 hover:to-rose-400/35 transition-all"
+                  >
+                    حسناً
+                  </button>
+                </div>
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
 
       {/* Sidebar */}
       <aside className="premium-sidebar-shell w-72 shrink-0 border-l border-white/10 bg-[#0C1120] sticky top-0 h-screen hidden lg:flex flex-col p-8 z-[100]">
@@ -11052,11 +11309,26 @@ const Root = () => {
               </div>
               <input value={todoInput} onChange={(e) => setTodoInput(e.target.value)} placeholder="نص المهمة..." className="w-full bg-black/20 border border-white/15 rounded-xl px-3 py-2 text-xs focus:outline-none focus:border-rose-300/45 transition-all mb-2" />
               <div className="flex flex-wrap items-center gap-2 mb-2">
-                <label className="text-[10px] text-zinc-500 shrink-0">الموعد:</label>
-                <input type="datetime-local" value={todoDueInput} onChange={(e) => setTodoDueInput(e.target.value)} className="flex-1 min-w-[140px] bg-black/20 border border-white/15 rounded-xl px-2 py-2 text-[11px] focus:outline-none focus:border-rose-300/45 transition-all text-zinc-200" />
+                <span className="text-[10px] text-zinc-500 shrink-0 w-full sm:w-auto">الموعد (اختياري):</span>
+                <input
+                  type="date"
+                  value={todoDueDate}
+                  onChange={(e) => setTodoDueDate(e.target.value)}
+                  className="flex-1 min-w-[120px] sm:min-w-[130px] bg-black/20 border border-white/15 rounded-xl px-2 py-2 text-[11px] focus:outline-none focus:border-rose-300/45 transition-all text-zinc-200 [color-scheme:dark]"
+                />
+                <input
+                  type="time"
+                  step={60}
+                  value={todoDueTime}
+                  onChange={(e) => setTodoDueTime(e.target.value)}
+                  className="min-w-[100px] bg-black/20 border border-white/15 rounded-xl px-2 py-2 text-[11px] focus:outline-none focus:border-rose-300/45 transition-all text-zinc-200 [color-scheme:dark]"
+                />
                 <button
                   type="button"
-                  onClick={() => setTodoDueInput('')}
+                  onClick={() => {
+                    setTodoDueDate('');
+                    setTodoDueTime('');
+                  }}
                   className="text-[10px] text-zinc-500 underline px-1"
                 >
                   بدون وقت
@@ -11072,8 +11344,18 @@ const Root = () => {
                     return;
                   }
                   let dueIso: string | undefined;
-                  if (todoDueInput.trim()) {
-                    const d = new Date(todoDueInput);
+                  const dateT = todoDueDate.trim();
+                  const timeT = todoDueTime.trim();
+                  if (dateT || timeT) {
+                    if (!dateT) {
+                      toast.error('اختر التاريخ أو امسح الوقت بالكامل');
+                      return;
+                    }
+                    if (!timeT) {
+                      toast.error('اختر الساعة مع التاريخ');
+                      return;
+                    }
+                    const d = new Date(`${dateT}T${timeT}`);
                     if (!Number.isNaN(d.getTime()) && d.getTime() > Date.now()) {
                       dueIso = d.toISOString();
                     } else {
@@ -11087,11 +11369,19 @@ const Root = () => {
                       id: `todo-${Date.now()}`,
                       text,
                       done: false,
-                      ...(dueIso ? { dueAt: dueIso, reminder30Emitted: false, reminder60Emitted: false } : {}),
+                      ...(dueIso
+                        ? {
+                            dueAt: dueIso,
+                            reminder30Emitted: false,
+                            reminder60Emitted: false,
+                            dueAlarmEmitted: false,
+                          }
+                        : {}),
                     },
                   ]);
                   setTodoInput('');
-                  setTodoDueInput('');
+                  setTodoDueDate('');
+                  setTodoDueTime('');
                   toast.success(dueIso ? 'تم حفظ المهمة مع موعد وتذكيرات' : 'تم حفظ المهمة');
                 }}
                 className="w-full sm:w-auto px-4 py-2 rounded-xl bg-gradient-to-r from-rose-500/30 to-rose-400/20 border border-rose-300/35 text-xs text-rose-100 font-black hover:from-rose-500/40 hover:to-rose-400/30 transition-all duration-300 mb-2"

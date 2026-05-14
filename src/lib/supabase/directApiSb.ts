@@ -235,11 +235,13 @@ export async function patchUserSb(
   id: string,
   patch: Partial<{
     name: string;
+    email: string;
     role: User['role'];
     avatar: string | null;
     skills: User['skills'];
     baseSalary: number;
     stats: User['stats'];
+    newPassword?: string;
   }>,
 ): Promise<User> {
   const actor = await getSupabaseActor();
@@ -258,6 +260,22 @@ export async function patchUserSb(
   if (patch.name != null && String(patch.name).trim()) {
     if (!canOwner && !isSelf) throw new Error('غير مصرح');
     data.name = String(patch.name).trim();
+  }
+  if (patch.email !== undefined && patch.email !== null) {
+    if (!canOwner) throw new Error('غير مصرح بتعديل البريد');
+    if (existing.role === 'مالك' && existing.id !== actor.id) {
+      throw new Error('لا يمكن تغيير بريد حساب مالك آخر');
+    }
+    const email = String(patch.email || '')
+      .trim()
+      .toLowerCase();
+    if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      throw new Error('صيغة البريد غير صالحة');
+    }
+    const { data: clash, error: clashErr } = await sb.from('users').select('id').eq('email', email).neq('id', id).maybeSingle();
+    if (clashErr) throw new Error(clashErr.message);
+    if (clash) throw new Error('البريد مستخدم لمستخدم آخر');
+    data.email = email;
   }
   if (patch.role != null) {
     if (!canOwner) throw new Error('غير مصرح');
@@ -281,6 +299,11 @@ export async function patchUserSb(
   if (patch.stats != null && typeof patch.stats === 'object') {
     if (!canOwner) throw new Error('غير مصرح');
     data.stats_json = patch.stats;
+  }
+  if (Object.prototype.hasOwnProperty.call(patch, 'newPassword')) {
+    throw new Error(
+      'تعيين باسورد الموظف من الواجهة غير متاح في وضع Supabase المباشر. إمّا من لوحة Supabase ← Authentication ← Users، أو استخدم خادم التطبيق (Express + Prisma) حيث يُحدَّث bcrypt في قاعدة البيانات.',
+    );
   }
   if (Object.keys(data).length === 0) return existing;
 

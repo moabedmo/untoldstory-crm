@@ -107,10 +107,11 @@ router.patch('/:id', requireAuth(), async (req, res) => {
 
     const canOwner = actor.role === 'مالك';
     const isSelf = actor.id === existing.id;
+    const existingRoleN = normalizeUserRole(existing.role);
     const canSalesSkills =
-      actor.role === 'مدير مبيعات' && existing.role === 'مندوب';
+      actor.role === 'مدير مبيعات' && existingRoleN === 'مندوب';
     const canAccountingSalary =
-      (actor.role === 'محاسب' || actor.role === 'مالك') && existing.role === 'مندوب';
+      (actor.role === 'محاسب' || actor.role === 'مالك') && existingRoleN === 'مندوب';
 
     const patch = req.body || {};
     const data = {};
@@ -118,6 +119,23 @@ router.patch('/:id', requireAuth(), async (req, res) => {
     if (patch.name != null && String(patch.name).trim()) {
       if (!canOwner && !isSelf) return res.status(403).json({ error: 'غير مصرح' });
       data.name = String(patch.name).trim();
+    }
+    if (patch.email !== undefined && patch.email !== null) {
+      if (!canOwner) return res.status(403).json({ error: 'غير مصرح بتعديل البريد' });
+      if (existingRoleN === 'مالك' && existing.id !== actor.id) {
+        return res.status(403).json({ error: 'لا يمكن تغيير بريد حساب مالك آخر من هنا' });
+      }
+      const email = String(patch.email || '')
+        .trim()
+        .toLowerCase();
+      if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+        return res.status(400).json({ error: 'صيغة البريد غير صالحة' });
+      }
+      const taken = await prisma.user.findFirst({
+        where: { email, NOT: { id } },
+      });
+      if (taken) return res.status(409).json({ error: 'البريد مستخدم لمستخدم آخر' });
+      data.email = email;
     }
     if (patch.role != null) {
       if (!canOwner) return res.status(403).json({ error: 'غير مصرح' });
@@ -141,6 +159,23 @@ router.patch('/:id', requireAuth(), async (req, res) => {
     if (patch.stats != null && typeof patch.stats === 'object') {
       if (!canOwner) return res.status(403).json({ error: 'غير مصرح' });
       data.statsJson = patch.stats;
+    }
+
+    if (Object.prototype.hasOwnProperty.call(patch, 'newPassword')) {
+      if (!canOwner) return res.status(403).json({ error: 'غير مصرح' });
+      if (id === actor.id) {
+        return res.status(400).json({
+          error: 'استخدم مسار «كلمة مرور حساب المالك» في الإعدادات لتغيير باسوردك الحالي',
+        });
+      }
+      if (existingRoleN === 'مالك') {
+        return res.status(400).json({ error: 'لا يمكن تغيير كلمة مرور حساب مالك آخر من هنا' });
+      }
+      const np = String(patch.newPassword ?? '').trim();
+      if (np.length < 8) {
+        return res.status(400).json({ error: 'كلمة المرور الجديدة يجب أن لا تقل عن 8 أحرف' });
+      }
+      data.passwordHash = await bcrypt.hash(np, 10);
     }
 
     if (Object.keys(data).length === 0) {
