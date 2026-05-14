@@ -10669,10 +10669,11 @@ const Root = () => {
 
   const notifications = useMemo(() => {
     try {
+      const uid = String(currentUserId || '').trim();
       const base = getSystemNotifications().filter(
-        n =>
+        (n) =>
           (!n.targetRoles || n.targetRoles.includes(currentRole)) &&
-          (!n.targetUserId || n.targetUserId === currentUserId)
+          (!n.targetUserId || String(n.targetUserId).trim() === uid),
       );
       const seen = new Set(base.map((n) => n.id));
       return [...base, ...personalTodoBellNotifications.filter((n) => !seen.has(n.id))];
