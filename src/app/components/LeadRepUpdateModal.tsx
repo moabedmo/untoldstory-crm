@@ -1,4 +1,5 @@
 import React, { useCallback, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { motion } from 'motion/react';
 import { toast } from 'sonner';
 import { useData, type Lead } from '../context/DataContext';
@@ -108,10 +109,12 @@ export function useLeadRepUpdate() {
 
   const LeadRepUpdateModal = () => {
     if (!modal.isOpen || !modal.lead) return null;
-    return (
+    return createPortal(
       <div
-        className="fixed inset-0 z-[220] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4"
+        className="fixed inset-0 z-[350] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4"
         dir="rtl"
+        role="dialog"
+        aria-modal="true"
       >
         <div className="w-full max-w-2xl rounded-3xl border border-white/15 bg-[#0B1020] shadow-2xl">
           <motion.div
@@ -229,7 +232,8 @@ export function useLeadRepUpdate() {
             </button>
           </motion.div>
         </div>
-      </div>
+      </div>,
+      document.body,
     );
   };
 
