@@ -135,7 +135,8 @@ async function checkN8n() {
         const patterns = [
           ['Meta', 'Meta Lead'],
           ['Gmail', 'Gmail Inbox'],
-          ['Google', 'Google Sheets'],
+          ['Google Ads API', 'Google Ads API'],
+          ['Google Sheets', 'Google Sheets (legacy)'],
           ['إشعار', 'إشعار العميل'],
         ];
         for (const [needle, label] of patterns) {

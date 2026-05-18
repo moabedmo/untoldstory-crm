@@ -1,0 +1,149 @@
+{
+  "name": "Google Ads API → Supabase leads (google)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## Google Ads API — كل الحملات تلقائياً\n\n### 0) Supabase API\nعقدة Insert → Supabase credential\n\n### 1) Google Ads OAuth2 API\n- Client ID + Secret من Google Cloud\n- **Developer Token** من Google Ads → Tools → API Center\n- Connect بحساب الإعلانات\n\nعقدة **Fetch Google Ads Leads** → نفس Credential\n\n### 2) Static Data (اختياري)\n```json\n{\n  \"googleAdsDeveloperToken\": \"ضع_هنا_لو_مش_في_Credential\",\n  \"googleAdsLoginCustomerId\": \"1234567890\",\n  \"googleAdsCustomerId\": \"\",\n  \"googleAdsApiVersion\": \"v17\",\n  \"defaultAssignedToId\": \"u_xxx\"\n}\n```\nloginCustomerId = MCC فقط\n\n### 3) Manual → Active (كل 10 دقائق)\nيسحب lead_form_submission_data من كل حسابات Ads المتاحة — أي حملة Lead Form جديدة بدون إعداد شيت.",
+        "height": 480,
+        "width": 560,
+        "color": 4
+      },
+      "id": "sticky-gads-setup",
+      "name": "Setup (اقرأني)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [
+        -360,
+        -140
+      ]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 10
+            }
+          ]
+        }
+      },
+      "id": "trigger-schedule-gads",
+      "name": "Every 10 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        240,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "trigger-manual-gads",
+      "name": "Manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        240,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "async function resolveGoogleAdsAuth() {\n  const sd = $getWorkflowStaticData('global');\n  let accessToken = '';\n  let devTok = String(sd.googleAdsDeveloperToken || '').trim();\n  let loginCustomerId = String(sd.googleAdsLoginCustomerId || '').replace(/\\D/g, '');\n  let forcedCustomerId = String(sd.googleAdsCustomerId || '').replace(/\\D/g, '');\n  try {\n    const g = await this.getCredentials('googleAdsOAuth2Api');\n    accessToken = String(g.oauthTokenData?.access_token || g.accessToken || g.access_token || '').trim();\n    devTok = devTok || String(g.developerToken || g.developer_token || '').trim();\n    const cid = g.customerId || g.customer_id || g.loginCustomerId;\n    if (cid && !forcedCustomerId) forcedCustomerId = String(cid).replace(/\\D/g, '');\n    const login = g.loginCustomerId || g.managerCustomerId;\n    if (login && !loginCustomerId) loginCustomerId = String(login).replace(/\\D/g, '');\n  } catch (_) {}\n  return { accessToken, devTok, loginCustomerId, forcedCustomerId };\n}\n\nconst { accessToken, devTok, loginCustomerId, forcedCustomerId } = await resolveGoogleAdsAuth.call(this);\nconst sd = $getWorkflowStaticData('global');\nconst ver = String(sd.googleAdsApiVersion || 'v17').trim();\nconst MAX = Math.min(100, Math.max(1, Number(sd.googleAdsMaxPerRun || 80)));\n\nif (!accessToken) {\n  throw new Error('ربط Google Ads: Credentials → Google Ads OAuth2 API على عقدة Fetch ثم Connect');\n}\nif (!devTok) {\n  throw new Error('أضف Developer Token في Credential أو في Workflow Static Data: googleAdsDeveloperToken');\n}\n\nif (!Array.isArray(sd.processedGoogleAdsIds)) sd.processedGoogleAdsIds = [];\nconst processed = new Set(sd.processedGoogleAdsIds);\n\nfunction adsHeaders(token) {\n  const h = {\n    Authorization: `Bearer ${token}`,\n    'Content-Type': 'application/json',\n    'developer-token': devTok,\n  };\n  if (loginCustomerId) h['login-customer-id'] = loginCustomerId;\n  return h;\n}\n\nasync function adsGet(url, token) {\n  return await this.helpers.httpRequest({\n    method: 'GET',\n    url,\n    headers: adsHeaders(token),\n    json: true,\n    timeout: 60000,\n  });\n}\n\nasync function adsSearch(customerId, token) {\n  const query = `\n    SELECT\n      lead_form_submission_data.resource_name,\n      lead_form_submission_data.id,\n      lead_form_submission_data.campaign,\n      lead_form_submission_data.submission_date_time,\n      lead_form_submission_data.lead_form_submission_fields\n    FROM lead_form_submission_data\n    ORDER BY lead_form_submission_data.submission_date_time DESC\n    LIMIT ${MAX + 30}\n  `\n    .replace(/\\s+/g, ' ')\n    .trim();\n  return await this.helpers.httpRequest({\n    method: 'POST',\n    url: `https://googleads.googleapis.com/${ver}/customers/${customerId}/googleAds:search`,\n    headers: adsHeaders(token),\n    body: { query, pageSize: MAX + 30 },\n    json: true,\n    timeout: 90000,\n  });\n}\n\nfunction parseSubmissionFields(fields) {\n  const map = {};\n  const push = (name, val) => {\n    const n = String(name || '')\n      .toLowerCase()\n      .replace(/\\s+/g, '_');\n    const v = String(val || '').trim();\n    if (n && v) map[n] = v;\n  };\n  if (Array.isArray(fields)) {\n    for (const f of fields) {\n      if (!f || typeof f !== 'object') continue;\n      push(f.fieldName || f.field_name || f.question || f.name, f.fieldValue || f.field_value || f.answer || f.value);\n    }\n  }\n  const email = map.email || map.work_email || map.business_email || map.email_address || '';\n  const phone = map.phone_number || map.phone || map.mobile || map.mobile_phone || '';\n  const fullName = map.full_name || map.name || map.first_name || '';\n  const company = map.company_name || map.company || map.business_name || '';\n  return { email, phone, fullName, company };\n}\n\nlet customerIds = [];\nif (forcedCustomerId) {\n  customerIds = [forcedCustomerId];\n} else {\n  const listData = await adsGet.call(\n    this,\n    `https://googleads.googleapis.com/${ver}/customers:listAccessibleCustomers`,\n    accessToken,\n  );\n  const names = Array.isArray(listData.resourceNames) ? listData.resourceNames : [];\n  customerIds = names\n    .map((rn) => String(rn).replace(/^customers\\//i, '').replace(/\\D/g, ''))\n    .filter(Boolean)\n    .slice(0, 8);\n}\n\nconst out = [];\nlet apiErrors = 0;\n\nfor (const cid of customerIds) {\n  let searchRes;\n  try {\n    searchRes = await adsSearch.call(this, cid, accessToken);\n  } catch {\n    apiErrors += 1;\n    continue;\n  }\n  const results = Array.isArray(searchRes?.results) ? searchRes.results : [];\n  for (const row of results) {\n    if (out.length >= MAX) break;\n    const payload = row.leadFormSubmissionData || row.lead_form_submission_data || row;\n    const sid = payload?.id != null ? String(payload.id) : '';\n    const dedupeKey = sid ? `${cid}-${sid}` : '';\n    if (dedupeKey && processed.has(dedupeKey)) continue;\n\n    const fields = payload?.leadFormSubmissionFields || payload?.lead_form_submission_fields || [];\n    const parsed = parseSubmissionFields(fields);\n    let email = (parsed.email || '').toLowerCase().trim();\n    let phone = (parsed.phone || '').replace(/\\s+/g, '').trim();\n    const name = ((parsed.fullName || '').trim() || 'عميل Google Ads').slice(0, 200);\n    const company = ((parsed.company || `Google Ads — ${cid}`).trim() || '—').slice(0, 200);\n    if (!email && !phone) email = `lead-${sid || Date.now()}@google-ads-lead.local`;\n    if (!phone) phone = '01000000000';\n    if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) email = `lead-${sid || Date.now()}@google-ads-lead.local`;\n\n    const subTime = payload?.submissionDateTime || payload?.submission_date_time;\n    const createdAt = subTime ? new Date(String(subTime)).toISOString() : new Date().toISOString();\n    const campaign = String(payload?.campaign || '').slice(0, 120);\n\n    out.push({\n      google_ads_submission_id: dedupeKey || sid,\n      google_ads_customer_id: cid,\n      name,\n      company,\n      phone,\n      email,\n      source: 'google',\n      campaign,\n      created_time: createdAt,\n    });\n    if (dedupeKey) processed.add(dedupeKey);\n  }\n  if (out.length >= MAX) break;\n}\n\nsd.processedGoogleAdsIds = Array.from(processed).slice(-3000);\n\nif (out.length === 0) {\n  return [\n    {\n      json: {\n        _summary: true,\n        fetched: 0,\n        customers: customerIds.length,\n        api_errors: apiErrors,\n        message:\n          customerIds.length === 0\n            ? 'No accessible Google Ads customers. Check OAuth + Developer Token.'\n            : 'No new lead form submissions (or all already processed).',\n      },\n    },\n  ];\n}\n\nreturn out.map((item) => ({ json: item }));\n"
+      },
+      "id": "code-fetch-google-ads",
+      "name": "Fetch Google Ads Leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        520,
+        100
+      ],
+      "credentials": {
+        "googleAdsOAuth2Api": {
+          "id": "CONFIGURE_IN_N8N",
+          "name": "Google Ads account"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "async function resolveSupabase() {\n  let url = '';\n  let key = '';\n  try {\n    const sb = await this.getCredentials('supabaseApi');\n    url = String(sb.host || sb.url || '').replace(/\\/$/, '');\n    key = String(sb.serviceRole || sb.serviceRoleKey || '').trim();\n  } catch (_) {}\n  if (!url) url = String($env.SUPABASE_URL || '').replace(/\\/$/, '');\n  if (!key) key = String($env.SUPABASE_SERVICE_ROLE_KEY || '').trim();\n  if (!url || !key) {\n    throw new Error('ربط Supabase: اختر Credential نوع Supabase API (Host + Service Role) على عقدة Insert، أو Environment.');\n  }\n  return { url, key };\n}\nconst { url: SUPABASE_URL, key: KEY } = await resolveSupabase.call(this);\nconst sd = $getWorkflowStaticData('global');\nconst ASSIGNED = sd.defaultAssignedToId || $env.DEFAULT_ASSIGNED_TO_ID || null;\n\nconst headers = {\n  apikey: KEY,\n  Authorization: `Bearer ${KEY}`,\n  'Content-Type': 'application/json',\n};\n\nfunction makeId() {\n  return `lead_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;\n}\n\nconst items = $input.all().filter((i) => !i.json._summary);\nconst results = [];\nlet inserted = 0;\nlet skipped = 0;\nlet errors = 0;\n\nfor (const item of items) {\n  const lead = item.json;\n  const email = lead.email;\n  const phone = lead.phone;\n\n  let existing;\n  try {\n    const checkUrl = `${SUPABASE_URL}/rest/v1/leads?or=(email.eq.${encodeURIComponent(email)},phone.eq.${encodeURIComponent(phone)})&select=id&limit=1`;\n    existing = await this.helpers.httpRequest({ method: 'GET', url: checkUrl, headers, json: true });\n  } catch (e) {\n    errors += 1;\n    results.push({ json: { ...lead, status: 'error', step: 'duplicate_check', message: e.message } });\n    continue;\n  }\n\n  if (Array.isArray(existing) && existing.length > 0) {\n    skipped += 1;\n    results.push({ json: { ...lead, status: 'skipped_duplicate', existing_id: existing[0].id } });\n    continue;\n  }\n\n  const id = makeId();\n  const now = new Date().toISOString();\n  const timeline = [\n    {\n      id: `ev-gads-${id}`,\n      leadId: id,\n      action: 'استيراد من Google Sheets (n8n)',\n      note: `Google Ads — ${lead.google_ads_customer_id} — ${lead.campaign || lead.google_ads_submission_id}`,\n      userId: 'n8n',\n      userName: 'تكامل Google Ads',\n      createdAt: now,\n    },\n    {\n      id: `a-${id}`,\n      leadId: id,\n      action: 'إضافة الليد إلى النظام',\n      userId: 'n8n',\n      userName: 'تكامل Google Ads',\n      createdAt: now,\n    },\n  ];\n\n  const row = {\n    id,\n    customer_code: null,\n    name: lead.name,\n    company: lead.company,\n    phone: lead.phone,\n    email: lead.email,\n    status: 'جديد',\n    assigned_to_id: ASSIGNED,\n    budget: 0,\n    company_size: 'صغير',\n    source: 'google',\n    category: 'إعلانات',\n    score: 50,\n    follow_up_at: null,\n    loss_reason_code: null,\n    sla_status: 'مستقر',\n    timeline_json: timeline,\n    created_at: now,\n    updated_at: now,\n  };\n\n  try {\n    await this.helpers.httpRequest({\n      method: 'POST',\n      url: `${SUPABASE_URL}/rest/v1/leads`,\n      headers: { ...headers, Prefer: 'return=minimal' },\n      body: row,\n    });\n    inserted += 1;\n    results.push({ json: { ...lead, status: 'inserted', lead_id: id } });\n  } catch (e) {\n    errors += 1;\n    results.push({ json: { ...lead, status: 'error', step: 'insert', message: e.message } });\n  }\n}\n\nresults.push({\n  json: {\n    _summary: true,\n    processed: items.length,\n    inserted,\n    skipped_duplicate: skipped,\n    errors,\n  },\n});\n\nreturn results;"
+      },
+      "id": "code-insert-gads-supabase",
+      "name": "Insert into Supabase",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        100
+      ],
+      "credentials": {
+        "supabaseApi": {
+          "id": "CONFIGURE_IN_N8N",
+          "name": "Supabase — Untold Story"
+        }
+      }
+    }
+  ],
+  "connections": {
+    "Every 10 minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Google Ads Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual": {
+      "main": [
+        [
+          {
+            "node": "Fetch Google Ads Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Google Ads Leads": {
+      "main": [
+        [
+          {
+            "node": "Insert into Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "leads"
+    },
+    {
+      "name": "google-ads"
+    },
+    {
+      "name": "supabase"
+    }
+  ],
+  "triggerCount": 1,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}

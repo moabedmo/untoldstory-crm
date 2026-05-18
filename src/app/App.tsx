@@ -78,6 +78,7 @@ import {
   type RepQuotePipelineStepState,
 } from '@/lib/repQuotePipeline';
 import PageViewsHub from './components/PageViewsHub';
+import { useLeadRepUpdate } from './components/LeadRepUpdateModal';
 
 // --- Shared Components ---
 const SYSTEM_NAME = 'The Untold Story System';
@@ -173,20 +174,6 @@ async function playPersonalTodoDueBeep(): Promise<void> {
     /* حظر التشغيل التلقائي أو غياب Web Audio */
   }
 }
-const REP_INTERACTION_PLAYBOOKS: Record<'call' | 'chat' | 'other', { id: string; label: string; text: string }[]> = {
-  call: [
-    { id: 'call-discovery', label: 'اكتشاف احتياج العميل', text: 'تمت مكالمة اكتشاف: فهم الهدف التجاري، التحديات الحالية، والميزانية المتوقعة. الخطوة التالية: إرسال تصور أولي خلال 24 ساعة.' },
-    { id: 'call-followup', label: 'متابعة بعد عرض السعر', text: 'تمت مكالمة متابعة عرض السعر: شرح البنود الرئيسية والجدول الزمني، وتم تسجيل الملاحظات المطلوبة من العميل قبل قرار نهائي.' },
-  ],
-  chat: [
-    { id: 'chat-brief', label: 'جمع الـBrief عبر الشات', text: 'تم استلام Brief عبر الشات: نطاق العمل، المخرجات المطلوبة، وأمثلة مرجعية. سيتم تحويلها لعرض سعر تفصيلي.' },
-    { id: 'chat-reminder', label: 'تذكير واستكمال المتطلبات', text: 'تم إرسال متابعة واتساب لتأكيد النقاط الناقصة (الميزانية/الموعد/الموافقات الداخلية) مع تحديد موعد رد واضح.' },
-  ],
-  other: [
-    { id: 'other-summary', label: 'تحديث عام منظم', text: 'تم تسجيل تحديث منظم على العميل مع توضيح ما تم، ما ينتظر من العميل، والخطوة التشغيلية التالية بالتاريخ.' },
-  ],
-};
-
 const StatCard = ({ title, value, icon: Icon, trend, onClick }: any) => (
   <button
     type="button"
@@ -3558,6 +3545,7 @@ const LEADS_PAGE_SIZE = 25;
 
 const LeadsWorkspace = () => {
   const { leads, users, invoices, expenses, priceQuotes, shootBookings, equipmentBookings, meetingBookings, manualCustomers, currentUser, addLead, addManualCustomer, assignLead, updateLeadStatus, deleteLead } = useData();
+  const { openLeadUpdate, canUpdateLead, LeadRepUpdateModal } = useLeadRepUpdate();
   const [search, setSearch] = useState('');
   const [leadsPage, setLeadsPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<'الكل' | LeadStatus>('الكل');
@@ -4385,6 +4373,15 @@ const LeadsWorkspace = () => {
                               عرض سعر
                             </button>
                           )}
+                          {canUpdateLead(lead) && (
+                            <button
+                              type="button"
+                              onClick={() => openLeadUpdate(lead)}
+                              className="px-2 py-1.5 rounded-lg text-[10px] font-black bg-[#7C6BFF] text-white border border-violet-400/40"
+                            >
+                              + تحديث
+                            </button>
+                          )}
                           <button
                             type="button"
                             onClick={() => setClient360Lead(lead)}
@@ -4676,9 +4673,20 @@ const LeadsWorkspace = () => {
                 <h3 className="text-xl font-black">Client 360: {client360Lead.name}</h3>
                 <p className="text-xs text-zinc-500 mt-1">{client360Lead.company} • {client360Lead.phone} • الحالة: {client360Lead.status}</p>
               </div>
-              <button onClick={() => setClient360Lead(null)} className="p-2 hover:bg-white/10 rounded-xl">
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                {canUpdateLead(client360Lead) && (
+                  <button
+                    type="button"
+                    onClick={() => openLeadUpdate(client360Lead)}
+                    className="px-4 py-2 rounded-xl text-xs font-black bg-[#7C6BFF] text-white"
+                  >
+                    + إضافة تحديث
+                  </button>
+                )}
+                <button type="button" onClick={() => setClient360Lead(null)} className="p-2 hover:bg-white/10 rounded-xl">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-5">
               <div className="bg-[#0F1528] border border-white/10 rounded-xl p-3"><p className="text-[11px] text-zinc-400">إجمالي الفواتير</p><p className="text-lg font-black text-white">{client360Data.totalRevenue.toLocaleString()} ج.م</p></div>
@@ -4740,6 +4748,7 @@ const LeadsWorkspace = () => {
           </div>
         </div>
       )}
+      <LeadRepUpdateModal />
     </div>
   );
 };
@@ -5973,6 +5982,7 @@ const RepQuotePipelineCard = ({
 
 const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTab?: (tab: string) => void }) => {
   const { leads, logLeadInteraction, updateLeadStatus, setLeadFollowUp, printBrandingSettings, priceQuotes, repRecordClientAcceptance, repRecordClientRejection } = useData();
+  const { openInteraction, openLeadUpdate, LeadRepUpdateModal } = useLeadRepUpdate();
   const [quoteLead, setQuoteLead] = useState<Lead | null>(null);
 
   // ---- State for client-response modal ----
@@ -6037,27 +6047,6 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
   const [followUpDrafts, setFollowUpDrafts] = useState<Record<string, string>>({});
   const [leadFilter, setLeadFilter] = useState<'all' | 'today' | 'overdue'>('all');
   const [showEndOfDayPanel, setShowEndOfDayPanel] = useState(false);
-  const [interactionModal, setInteractionModal] = useState<{
-    isOpen: boolean;
-    lead: Lead | null;
-    action: string;
-    note: string;
-    channelType: 'call' | 'chat' | 'other';
-    evidenceType: 'recording' | 'chat_export' | 'link' | 'note_only';
-    evidenceRef: string;
-    durationSeconds: string;
-    toastType: 'success' | 'info';
-  }>({
-    isOpen: false,
-    lead: null,
-    action: '',
-    note: '',
-    channelType: 'other',
-    evidenceType: 'note_only',
-    evidenceRef: '',
-    durationSeconds: '',
-    toastType: 'success',
-  });
   const openLeadClient360 = (leadId: string) => {
     localStorage.setItem(NAV_INTENT_KEY, JSON.stringify({ tab: 'leads', leadsClient360Id: leadId }));
     if (onGoToTab) onGoToTab('leads');
@@ -6069,7 +6058,7 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
   );
 
   const isConfirmedContactActivity = (activity: Activity) =>
-    /(مكالمة تمت|إرسال واتساب متابعة|واتساب|تم التواصل|متابعة مكتملة)/.test(activity.action);
+    /(مكالمة|تحديث|إرسال واتساب|واتساب|تم التواصل|متابعة)/.test(activity.action);
   const hasValidEvidenceNote = (activity: Activity) => (activity.note || '').trim().length > 0;
   const hasDocumentedContact = (lead: Lead) =>
     lead.timeline.some(
@@ -6141,62 +6130,7 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
     defaultNote: string,
     toastType: 'success' | 'info' = 'success'
   ) => {
-    const inferredChannel: 'call' | 'chat' | 'other' =
-      /(مكالمة|اتصال)/.test(action) ? 'call' : /(واتساب|شات)/.test(action) ? 'chat' : 'other';
-    setInteractionModal({
-      isOpen: true,
-      lead,
-      action,
-      note: defaultNote,
-      channelType: inferredChannel,
-      evidenceType: 'note_only',
-      evidenceRef: '',
-      durationSeconds: '',
-      toastType,
-    });
-  };
-
-  const submitInteractionNote = () => {
-    if (!interactionModal.lead) return;
-    const note = interactionModal.note.trim();
-    if (!note) {
-      toast.error('اكتب ملخص التواصل قبل الحفظ.');
-      return;
-    }
-    logLeadInteraction(
-      interactionModal.lead.id,
-      interactionModal.action,
-      note,
-      {
-        channelType: interactionModal.channelType,
-        evidenceType: interactionModal.evidenceType,
-        evidenceRef: interactionModal.evidenceRef.trim() || undefined,
-        durationSeconds: interactionModal.durationSeconds ? Number(interactionModal.durationSeconds) || undefined : undefined,
-      }
-    );
-    if (interactionModal.toastType === 'info') {
-      toast.info(`تم حفظ التحديث: ${interactionModal.lead.name}`);
-    } else {
-      toast.success(`تم حفظ التحديث: ${interactionModal.lead.name}`);
-    }
-    setInteractionModal({
-      isOpen: false,
-      lead: null,
-      action: '',
-      note: '',
-      channelType: 'other',
-      evidenceType: 'note_only',
-      evidenceRef: '',
-      durationSeconds: '',
-      toastType: 'success',
-    });
-  };
-  const applyPlaybookTemplate = (templateId: string) => {
-    if (!templateId) return;
-    const templates = REP_INTERACTION_PLAYBOOKS[interactionModal.channelType] || [];
-    const picked = templates.find((t) => t.id === templateId);
-    if (!picked) return;
-    setInteractionModal((prev) => ({ ...prev, note: picked.text }));
+    openInteraction(lead, action, defaultNote, toastType);
   };
 
   const logCallDone = (lead: Lead) => {
@@ -6795,6 +6729,13 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
                 </td>
                 <td className="p-3 align-top">
                   <div className="grid grid-cols-2 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => openLeadUpdate(lead)}
+                      className="col-span-2 px-2 py-1.5 rounded-lg text-[11px] font-black bg-[#7C6BFF] text-white border border-violet-400/40"
+                    >
+                      + إضافة تحديث
+                    </button>
                     <button onClick={() => logCallDone(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-emerald-500 text-slate-950">مكالمة</button>
                     <button onClick={() => logWhatsApp(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-indigo-500 text-white">واتساب</button>
                     <button onClick={() => logNoAnswer(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-amber-500 text-slate-950">لم يرد</button>
@@ -6802,7 +6743,7 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
                     <button onClick={() => closeWon(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-[#7C6BFF] text-white">فوز</button>
                     <button onClick={() => closeLost(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-rose-500 text-white">خسارة</button>
                   </div>
-                  <button onClick={() => setQuoteLead(lead)} className="mt-1.5 w-full px-2 py-1.5 rounded-lg text-[11px] font-black bg-amber-500/20 text-amber-200 border border-amber-500/30">
+                  <button type="button" onClick={() => setQuoteLead(lead)} className="mt-1.5 w-full px-2 py-1.5 rounded-lg text-[11px] font-black bg-amber-500/20 text-amber-200 border border-amber-500/30">
                     عرض سعر
                   </button>
                 </td>
@@ -6818,101 +6759,7 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
       </div>
       <PriceQuoteSubmitModal lead={quoteLead} open={!!quoteLead} onClose={() => setQuoteLead(null)} />
 
-      {interactionModal.isOpen && interactionModal.lead && (
-        <div className="fixed inset-0 z-[220] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
-          <div className="w-full max-w-2xl rounded-3xl border border-white/15 bg-[#0B1020] shadow-2xl">
-            <div className="px-6 py-5 border-b border-white/10">
-              <p className="text-xs text-zinc-400">تسجيل تواصل</p>
-              <h3 className="text-lg font-black text-white mt-1">
-                {interactionModal.action} - {interactionModal.lead.name}
-              </h3>
-            </div>
-            <div className="p-6 space-y-3">
-              <label className="block text-sm font-bold text-zinc-200">ملخص التواصل</label>
-              <select
-                defaultValue=""
-                onChange={(e) => {
-                  applyPlaybookTemplate(e.target.value);
-                  e.currentTarget.value = '';
-                }}
-                className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-xs text-zinc-200"
-              >
-                <option value="">اختيار Playbook جاهز (اختياري)</option>
-                {(REP_INTERACTION_PLAYBOOKS[interactionModal.channelType] || []).map((p) => (
-                  <option key={p.id} value={p.id}>{p.label}</option>
-                ))}
-              </select>
-              <textarea
-                value={interactionModal.note}
-                onChange={(e) => setInteractionModal(prev => ({ ...prev, note: e.target.value }))}
-                rows={6}
-                autoFocus
-                placeholder="اكتب ملخصًا واضحًا لما تم مع العميل..."
-                className="w-full bg-[#111A32] border border-white/15 rounded-2xl px-4 py-3 text-sm text-zinc-100 focus:outline-none focus:border-[#7C6BFF] resize-y"
-              />
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                <select
-                  value={interactionModal.channelType}
-                  onChange={(e) => setInteractionModal(prev => ({ ...prev, channelType: e.target.value as 'call' | 'chat' | 'other' }))}
-                  className="bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-xs"
-                >
-                  <option value="call">مكالمة</option>
-                  <option value="chat">شات/واتساب</option>
-                  <option value="other">أخرى</option>
-                </select>
-                <select
-                  value={interactionModal.evidenceType}
-                  onChange={(e) => setInteractionModal(prev => ({ ...prev, evidenceType: e.target.value as 'recording' | 'chat_export' | 'link' | 'note_only' }))}
-                  className="bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-xs"
-                >
-                  <option value="note_only">بدون مرفق</option>
-                  <option value="recording">رابط تسجيل مكالمة</option>
-                  <option value="chat_export">رابط محادثة</option>
-                  <option value="link">رابط مرجعي</option>
-                </select>
-                <input
-                  value={interactionModal.evidenceRef}
-                  onChange={(e) => setInteractionModal(prev => ({ ...prev, evidenceRef: e.target.value }))}
-                  placeholder="رابط الدليل (اختياري)"
-                  className="bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-xs md:col-span-2"
-                />
-                <input
-                  type="number"
-                  min={0}
-                  value={interactionModal.durationSeconds}
-                  onChange={(e) => setInteractionModal(prev => ({ ...prev, durationSeconds: e.target.value }))}
-                  placeholder="مدة المكالمة بالثواني (اختياري)"
-                  className="bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-xs"
-                />
-              </div>
-            </div>
-            <div className="px-6 py-4 border-t border-white/10 flex items-center justify-end gap-2">
-              <button
-                onClick={() => setInteractionModal({
-                  isOpen: false,
-                  lead: null,
-                  action: '',
-                  note: '',
-                  channelType: 'other',
-                  evidenceType: 'note_only',
-                  evidenceRef: '',
-                  durationSeconds: '',
-                  toastType: 'success',
-                })}
-                className="px-4 py-2 rounded-xl text-sm font-bold bg-white/10 border border-white/15 text-zinc-200"
-              >
-                إلغاء
-              </button>
-              <button
-                onClick={submitInteractionNote}
-                className="px-4 py-2 rounded-xl text-sm font-black bg-[#7C6BFF] text-white"
-              >
-                حفظ التحديث
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      <LeadRepUpdateModal />
     </div>
   );
 };
