@@ -69,8 +69,106 @@ export function mapSpreadsheetHeaderKey(raw: string): string {
   if (/^(المسمى|الوظيفة|المسمى الوظيفي)$/.test(t) || /^(job_title|title|position)$/.test(ascii)) {
     return 'job_title';
   }
+  if (/^(الاهتمام|اهتمام|الموديل|موديل|السيارة|سيارة|المنتج)$/.test(t) || /^(interest|product|model|car|vehicle)$/.test(ascii)) {
+    return 'interest';
+  }
 
   return ascii || `col_${t.slice(0, 12)}`;
+}
+
+/** يحافظ على صفر بداية أرقام الجوال بعد قراءة Excel كرقم */
+export function normalizeSpreadsheetPhone(raw: string | number): string {
+  let s = String(raw ?? '')
+    .trim()
+    .replace(/[^\d+]/g, '');
+  if (!s) return '';
+  if (s.startsWith('+20')) s = '0' + s.slice(3);
+  else if (s.startsWith('20') && s.length === 12) s = '0' + s.slice(2);
+  const digits = s.replace(/\D/g, '');
+  if (digits.length === 10 && digits.startsWith('1')) return `0${digits}`;
+  if (digits.length === 11 && digits.startsWith('01')) return digits;
+  if (digits.length >= 9 && digits.length <= 15) return digits;
+  return digits;
+}
+
+function cellLooksLikePhone(val: string): boolean {
+  const digits = val.replace(/\D/g, '');
+  return digits.length >= 9 && digits.length <= 15;
+}
+
+function looksLikeHeaderRow(row: string[]): boolean {
+  const cells = row.map((c) => String(c ?? '').trim().toLowerCase());
+  const headerHints = [
+    'name',
+    'phone',
+    'mobile',
+    'email',
+    'company',
+    'interest',
+    'الاسم',
+    'الجوال',
+    'الموبايل',
+    'البريد',
+    'الشركة',
+    'رقم',
+    'الاهتمام',
+    'الموديل',
+  ];
+  let hits = 0;
+  for (const c of cells) {
+    if (c && headerHints.some((h) => c.includes(h))) hits += 1;
+  }
+  if (hits >= 2) return true;
+  if (hits === 1 && cells.filter(Boolean).length >= 3) return true;
+
+  const name = String(row[0] ?? '').trim();
+  const phone = findPhoneInRow(row);
+  if (name && phone && !headerHints.some((h) => name.toLowerCase() === h)) return false;
+  return hits > 0;
+}
+
+function findPhoneInRow(line: string[]): string {
+  for (let i = line.length - 1; i >= 0; i--) {
+    const raw = String(line[i] ?? '').trim();
+    if (!raw) continue;
+    if (cellLooksLikePhone(raw)) return normalizeSpreadsheetPhone(raw);
+  }
+  return '';
+}
+
+function findInterestInRow(line: string[]): string {
+  for (let i = 1; i < line.length; i++) {
+    const v = String(line[i] ?? '').trim();
+    if (!v || cellLooksLikePhone(v)) continue;
+    return v;
+  }
+  return '';
+}
+
+/** تنسيق بدون عناوين: A=الاسم، C=الاهتمام/الموديل، D=الجوال (B فارغ) */
+function positionalMatrixToObjects(matrix: string[][]): Record<string, string>[] {
+  const out: Record<string, string>[] = [];
+  for (let r = 0; r < matrix.length; r++) {
+    const line = matrix[r];
+    if (!line.some((c) => String(c ?? '').trim() !== '')) continue;
+
+    const name = String(line[0] ?? '').trim();
+    const phone = findPhoneInRow(line) || normalizeSpreadsheetPhone(line[3] ?? line[2] ?? '');
+    const interest =
+      String(line[2] ?? '').trim() && !cellLooksLikePhone(String(line[2] ?? ''))
+        ? String(line[2] ?? '').trim()
+        : findInterestInRow(line);
+
+    if (!name && !phone) continue;
+
+    out.push({
+      name,
+      phone,
+      ...(interest ? { interest } : {}),
+      _fileRow: String(r + 1),
+    });
+  }
+  return out;
 }
 
 function sheetMatrixToObjects(matrix: string[][]): Record<string, string>[] {
@@ -82,16 +180,23 @@ function sheetMatrixToObjects(matrix: string[][]): Record<string, string>[] {
   for (let r = 1; r < matrix.length; r++) {
     const line = matrix[r];
     if (!line.some((c) => String(c ?? '').trim() !== '')) continue;
-    const obj: Record<string, string> = {};
+    const obj: Record<string, string> = { _fileRow: String(r + 1) };
     for (let c = 0; c < keys.length; c++) {
       const key = keys[c];
       if (!key) continue;
       const val = String(line[c] ?? '').trim();
       if (val) obj[key] = obj[key] ? `${obj[key]} ${val}` : val;
     }
+    if (obj.phone) obj.phone = normalizeSpreadsheetPhone(obj.phone);
     out.push(obj);
   }
   return out;
+}
+
+function matrixToRowObjects(matrix: string[][]): Record<string, string>[] {
+  if (matrix.length === 0) return [];
+  if (looksLikeHeaderRow(matrix[0])) return sheetMatrixToObjects(matrix);
+  return positionalMatrixToObjects(matrix);
 }
 
 function pick(row: Record<string, string>, keys: string[]): string {
@@ -139,8 +244,17 @@ function matrixFromWorkbook(buffer: ArrayBuffer): string[][] {
     raw: false,
   });
   return raw.map((row) =>
-    (Array.isArray(row) ? row : []).map((cell) => String(cell ?? '').trim()),
+    (Array.isArray(row) ? row : []).map((cell) => formatWorkbookCell(cell)),
   );
+}
+
+function formatWorkbookCell(cell: unknown): string {
+  if (cell == null || cell === '') return '';
+  if (typeof cell === 'number') {
+    if (cell >= 1e8 && cell < 2e11) return normalizeSpreadsheetPhone(cell);
+    return String(cell).trim();
+  }
+  return String(cell).trim();
 }
 
 export function parseSpreadsheetObjects(objects: Record<string, string>[]): SpreadsheetLeadsParseResult {
@@ -149,20 +263,27 @@ export function parseSpreadsheetObjects(objects: Record<string, string>[]): Spre
   let skipped = 0;
 
   objects.forEach((raw, idx) => {
-    const rowNum = idx + 2;
+    const rowNum = Number(raw._fileRow) || idx + 2;
     const first = pick(raw, ['first_name']);
     const last = pick(raw, ['last_name']);
     let name = pick(raw, ['name']);
     if (!name) name = [first, last].filter(Boolean).join(' ').trim();
 
     let email = pick(raw, ['email']).toLowerCase();
-    let phone = pick(raw, ['phone']).replace(/\s+/g, ' ').trim();
+    let phone = normalizeSpreadsheetPhone(pick(raw, ['phone']));
+    const interest = pick(raw, ['interest', 'product', 'model']);
     let company = pick(raw, ['company']);
     const jobTitle = pick(raw, ['job_title']);
+    if (!company && interest) company = interest;
     if (!company && jobTitle) company = jobTitle;
 
     if (!name) name = company || `عميل صف ${rowNum}`;
     if (!company) company = '—';
+
+    let category = parseCategory(pick(raw, ['category']));
+    if (category === 'إعلانات' && /^[a-zA-Z\s.'-]+$/i.test(name) && !/[\u0600-\u06FF]/.test(name)) {
+      category = 'إنجليزي';
+    }
 
     if (!email && !phone) {
       skipped += 1;
@@ -185,7 +306,7 @@ export function parseSpreadsheetObjects(objects: Record<string, string>[]): Spre
       status: 'جديد',
       budget: parseBudget(pick(raw, ['budget'])),
       companySize: parseCompanySize(pick(raw, ['company_size'])),
-      category: parseCategory(pick(raw, ['category'])),
+      category,
       fileRowIndex: rowNum,
     });
   });
@@ -203,14 +324,13 @@ export async function parseSpreadsheetFile(file: File): Promise<SpreadsheetLeads
   if (name.endsWith('.csv')) {
     const text = await file.text();
     const matrix = parseCsvText(text);
-    return parseSpreadsheetObjects(sheetMatrixToObjects(matrix));
+    return parseSpreadsheetObjects(matrixToRowObjects(matrix));
   }
 
   if (name.endsWith('.xlsx') || name.endsWith('.xls')) {
     const buffer = await file.arrayBuffer();
     const matrix = matrixFromWorkbook(buffer);
-    const objects = sheetMatrixToObjects(matrix);
-    return parseSpreadsheetObjects(objects);
+    return parseSpreadsheetObjects(matrixToRowObjects(matrix));
   }
 
   return {

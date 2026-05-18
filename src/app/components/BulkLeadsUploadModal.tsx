@@ -205,8 +205,8 @@ export function BulkLeadsUploadModal({ isOpen, onClose, onImported }: Props) {
         <div className="mt-6 bg-blue-500/10 border border-blue-500/20 p-5 rounded-2xl flex items-start gap-3 text-blue-300">
           <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
           <p className="text-xs font-bold leading-relaxed">
-            الأعمدة المدعومة: الاسم، الشركة، الموبايل/الجوال، البريد (اختياري إذا وُجد الجوال)، الميزانية،
-            التصنيف، حجم الشركة — بالعربي أو الإنجليزي. الصف الأول = عناوين الأعمدة.
+            يدعم ملفك مباشرة بدون عناوين: العمود A = الاسم، C = الموديل/الاهتمام (Mercedes, EQE…)، D = الجوال.
+            أو ملف بصف عناوين (اسم، شركة، موبايل، بريد…) بالعربي أو الإنجليزي.
           </p>
         </div>
 
