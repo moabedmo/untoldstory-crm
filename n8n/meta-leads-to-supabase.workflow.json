@@ -1,0 +1,122 @@
+{
+  "name": "Meta Lead Ads → Supabase (facebook / instagram)",
+  "nodes": [
+    {
+      "parameters": {
+        "content": "## إعداد المتغيرات (n8n → Settings → Variables أو Environment)\n\n| المتغير | الوصف |\n|--------|--------|\n| `META_ACCESS_TOKEN` | User access token بصلاحية `leads_retrieval` و `pages_read_engagement` |\n| `META_GRAPH_VERSION` | اختياري — افتراضي `v21.0` |\n| `META_LEADS_MAX_PER_RUN` | اختياري — حد أقصى ليدز لكل تشغيل (افتراضي 100) |\n| `SUPABASE_URL` | مثل `https://xxxx.supabase.co` |\n| `SUPABASE_SERVICE_ROLE_KEY` | service_role (يتجاوز RLS) |\n| `DEFAULT_ASSIGNED_TO_ID` | اختياري — `users.id` لمدير المبيعات |\n\n**Meta:** Developers → App → Marketing API → صلاحيات Lead Ads. اربط الصفحات من Business Settings.\n\n**source في الجدول:** `facebook` أو `instagram` حسب حقل `platform` من Graph API.\n\n**استيراد:** Workflows → Import from File → فعّل الـ workflow.",
+        "height": 420,
+        "width": 520,
+        "color": 5
+      },
+      "id": "sticky-setup-ar",
+      "name": "Setup (اقرأني)",
+      "type": "n8n-nodes-base.stickyNote",
+      "typeVersion": 1,
+      "position": [-320, -200]
+    },
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 15
+            }
+          ]
+        }
+      },
+      "id": "trigger-schedule-15m",
+      "name": "Every 15 minutes",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [240, 0]
+    },
+    {
+      "parameters": {},
+      "id": "trigger-manual",
+      "name": "Manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [240, 200]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const META_TOKEN = $env.META_PAGE_ACCESS_TOKEN || $env.META_ACCESS_TOKEN;\nconst GRAPH = $env.META_GRAPH_VERSION || 'v21.0';\nconst MAX = Math.min(500, Math.max(1, Number($env.META_LEADS_MAX_PER_RUN || 100)));\n\nif (!META_TOKEN) {\n  throw new Error('Missing META_ACCESS_TOKEN (or META_PAGE_ACCESS_TOKEN) in n8n environment variables.');\n}\n\nfunction parseFieldData(fieldData) {\n  const map = {};\n  if (!Array.isArray(fieldData)) return map;\n  for (const row of fieldData) {\n    const n = String(row?.name || '').toLowerCase().replace(/\\s+/g, '_');\n    const v = Array.isArray(row?.values) && row.values[0] != null ? String(row.values[0]).trim() : '';\n    if (n && v) map[n] = v;\n  }\n  const email = map.email || map.work_email || map.business_email || map['e-mail'] || '';\n  const phone = map.phone_number || map.phone || map.mobile || map.mobile_phone || map.work_phone || '';\n  const fullName =\n    map.full_name ||\n    (map.first_name || map.last_name ? `${map.first_name || ''} ${map.last_name || ''}`.trim() : '') ||\n    map.name ||\n    '';\n  const company = map.company_name || map.company || map.business_name || map.organization || '';\n  return { email, phone, fullName, company };\n}\n\nfunction resolveSource(platform, pageName, formName) {\n  const p = String(platform || '').toLowerCase();\n  if (p === 'ig' || p === 'instagram' || p.includes('instagram')) return 'instagram';\n  if (p === 'fb' || p === 'facebook') return 'facebook';\n  const blob = `${pageName || ''} ${formName || ''}`.toLowerCase();\n  if (/instagram|\\binsta\\b|\\big\\b/.test(blob)) return 'instagram';\n  return 'facebook';\n}\n\nasync function graphGet(url) {\n  return await this.helpers.httpRequest({ method: 'GET', url, json: true, timeout: 60000 });\n}\n\nasync function fetchAllLeads(formId, pageToken, remaining) {\n  const leads = [];\n  let url = `https://graph.facebook.com/${GRAPH}/${formId}/leads?fields=id,created_time,field_data,platform&limit=50&access_token=${encodeURIComponent(pageToken)}`;\n  while (url && leads.length < remaining) {\n    const res = await graphGet.call(this, url);\n    for (const row of res.data || []) {\n      leads.push(row);\n      if (leads.length >= remaining) break;\n    }\n    url = leads.length < remaining && res.paging?.next ? res.paging.next : null;\n  }\n  return leads;\n}\n\nconst pagesRes = await graphGet.call(\n  this,\n  `https://graph.facebook.com/${GRAPH}/me/accounts?fields=id,name,access_token&limit=50&access_token=${encodeURIComponent(META_TOKEN)}`,\n);\n\nconst pages = pagesRes.data || [];\nconst out = [];\nlet graphErrors = 0;\n\nfor (const page of pages) {\n  if (!page.access_token) continue;\n  let formsRes;\n  try {\n    formsRes = await graphGet.call(\n      this,\n      `https://graph.facebook.com/${GRAPH}/${page.id}/leadgen_forms?fields=id,name,status&limit=40&access_token=${encodeURIComponent(page.access_token)}`,\n    );\n  } catch {\n    graphErrors += 1;\n    continue;\n  }\n\n  for (const form of formsRes.data || []) {\n    let rows;\n    try {\n      rows = await fetchAllLeads.call(this, form.id, page.access_token, MAX - out.length);\n    } catch {\n      graphErrors += 1;\n      continue;\n    }\n\n    for (const row of rows) {\n      const parsed = parseFieldData(row.field_data);\n      const metaId = String(row.id);\n      let email = (parsed.email || '').toLowerCase().trim();\n      let phone = (parsed.phone || '').replace(/\\s+/g, '').trim();\n      const name = ((parsed.fullName || '').trim() || 'عميل إعلان').slice(0, 200);\n      const company = ((parsed.company || page.name || '—').trim() || '—').slice(0, 200);\n\n      if (!email && !phone) email = `lead-${metaId}@meta-lead.local`;\n      if (!phone) phone = '01000000000';\n      if (!/^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$/.test(email)) email = `lead-${metaId}@meta-lead.local`;\n\n      const source = resolveSource(row.platform, page.name, form.name);\n      out.push({\n        meta_lead_id: metaId,\n        name,\n        company,\n        phone,\n        email,\n        source,\n        page_name: page.name || page.id,\n        form_name: form.name || form.id,\n        created_time: row.created_time || new Date().toISOString(),\n      });\n      if (out.length >= MAX) break;\n    }\n    if (out.length >= MAX) break;\n  }\n  if (out.length >= MAX) break;\n}\n\nif (out.length === 0) {\n  return [\n    {\n      json: {\n        _summary: true,\n        fetched: 0,\n        graph_errors: graphErrors,\n        pages: pages.length,\n        message: pages.length === 0 ? 'No Facebook pages linked to this token.' : 'No new lead rows from Meta in this run.',\n      },\n    },\n  ];\n}\n\nreturn out.map((item) => ({ json: item }));"
+      },
+      "id": "code-fetch-meta",
+      "name": "Fetch Meta Leads",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [520, 100]
+    },
+    {
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const SUPABASE_URL = String($env.SUPABASE_URL || '').replace(/\\/$/, '');\nconst KEY = $env.SUPABASE_SERVICE_ROLE_KEY;\nconst ASSIGNED = $env.DEFAULT_ASSIGNED_TO_ID || null;\n\nif (!SUPABASE_URL || !KEY) {\n  throw new Error('Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY in n8n environment variables.');\n}\n\nconst headers = {\n  apikey: KEY,\n  Authorization: `Bearer ${KEY}`,\n  'Content-Type': 'application/json',\n};\n\nfunction makeId() {\n  return `lead_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;\n}\n\nconst items = $input.all().filter((i) => !i.json._summary);\nconst results = [];\nlet inserted = 0;\nlet skipped = 0;\nlet errors = 0;\n\nfor (const item of items) {\n  const lead = item.json;\n  const email = lead.email;\n  const phone = lead.phone;\n\n  let existing;\n  try {\n    const checkUrl = `${SUPABASE_URL}/rest/v1/leads?or=(email.eq.${encodeURIComponent(email)},phone.eq.${encodeURIComponent(phone)})&select=id,source&limit=1`;\n    existing = await this.helpers.httpRequest({ method: 'GET', url: checkUrl, headers, json: true });\n  } catch (e) {\n    errors += 1;\n    results.push({ json: { ...lead, status: 'error', step: 'duplicate_check', message: e.message } });\n    continue;\n  }\n\n  if (Array.isArray(existing) && existing.length > 0) {\n    skipped += 1;\n    results.push({ json: { ...lead, status: 'skipped_duplicate', existing_id: existing[0].id } });\n    continue;\n  }\n\n  const id = makeId();\n  const now = new Date().toISOString();\n  const createdAt = lead.created_time || now;\n  const timeline = [\n    {\n      id: `ev-meta-${id}`,\n      leadId: id,\n      action: `استيراد من n8n (${lead.source})`,\n      note: `Meta Lead ID: ${lead.meta_lead_id} — ${lead.page_name} — ${lead.form_name}`,\n      userId: 'n8n',\n      userName: 'تكامل Meta',\n      createdAt,\n    },\n    {\n      id: `a-${id}`,\n      leadId: id,\n      action: 'إضافة الليد إلى النظام',\n      userId: 'n8n',\n      userName: 'تكامل Meta',\n      createdAt: now,\n    },\n  ];\n\n  const row = {\n    id,\n    customer_code: null,\n    name: lead.name,\n    company: lead.company,\n    phone: lead.phone,\n    email: lead.email,\n    status: 'جديد',\n    assigned_to_id: ASSIGNED,\n    budget: 0,\n    company_size: 'صغير',\n    source: lead.source,\n    category: 'إعلانات',\n    score: 55,\n    follow_up_at: null,\n    loss_reason_code: null,\n    sla_status: 'مستقر',\n    timeline_json: timeline,\n    created_at: createdAt,\n    updated_at: now,\n  };\n\n  try {\n    await this.helpers.httpRequest({\n      method: 'POST',\n      url: `${SUPABASE_URL}/rest/v1/leads`,\n      headers: { ...headers, Prefer: 'return=minimal' },\n      body: row,\n    });\n    inserted += 1;\n    results.push({ json: { ...lead, status: 'inserted', lead_id: id } });\n  } catch (e) {\n    errors += 1;\n    results.push({ json: { ...lead, status: 'error', step: 'insert', message: e.message } });\n  }\n}\n\nresults.push({\n  json: {\n    _summary: true,\n    processed: items.length,\n    inserted,\n    skipped_duplicate: skipped,\n    errors,\n  },\n});\n\nreturn results;"
+      },
+      "id": "code-insert-supabase",
+      "name": "Insert into Supabase",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [800, 100]
+    }
+  ],
+  "connections": {
+    "Every 15 minutes": {
+      "main": [
+        [
+          {
+            "node": "Fetch Meta Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual": {
+      "main": [
+        [
+          {
+            "node": "Fetch Meta Leads",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Fetch Meta Leads": {
+      "main": [
+        [
+          {
+            "node": "Insert into Supabase",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "staticData": null,
+  "tags": [
+    {
+      "name": "leads"
+    },
+    {
+      "name": "meta"
+    },
+    {
+      "name": "supabase"
+    }
+  ],
+  "triggerCount": 1,
+  "meta": {
+    "templateCredsSetupCompleted": true
+  }
+}
