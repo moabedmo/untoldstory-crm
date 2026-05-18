@@ -3569,6 +3569,8 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
   const [leadsPage, setLeadsPage] = useState(1);
   const [leadsPageSize, setLeadsPageSize] = useState(readLeadsPageSize);
   const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(() => new Set());
+  const selectedLeadIdsRef = useRef(selectedLeadIds);
+  selectedLeadIdsRef.current = selectedLeadIds;
   const [bulkAssignRepId, setBulkAssignRepId] = useState('');
   const [bulkAssigning, setBulkAssigning] = useState(false);
   const [statusFilter, setStatusFilter] = useState<'الكل' | LeadStatus>('الكل');
@@ -3799,23 +3801,24 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
     setBulkAssignRepId('');
   };
 
-  const handleBulkAssign = async () => {
-    if (!bulkAssignRepId) {
-      toast.error('اختر مندوباً أولاً');
-      return;
-    }
-    const ids = Array.from(selectedLeadIds);
+  const runBulkAssign = async (leadIds: string[], userId: string | undefined) => {
+    const ids = [...new Set(leadIds.map((id) => String(id).trim()).filter(Boolean))];
     if (ids.length === 0) return;
-    const rep = reps.find((r) => r.id === bulkAssignRepId);
-    if (!rep) {
+    const rep = userId ? reps.find((r) => r.id === userId) : undefined;
+    if (userId && !rep) {
       toast.error('المندوب غير موجود');
       return;
     }
-    const yes = window.confirm(`تعيين ${ids.length} ليد للمندوب «${rep.name}»؟`);
+    const assignLabel = userId ? `المندوب «${rep!.name}»` : 'بدون مندوب';
+    const yes = window.confirm(
+      ids.length === 1
+        ? `تعيين ليد واحد إلى ${assignLabel}؟`
+        : `تعيين ${ids.length} ليد إلى ${assignLabel}؟`,
+    );
     if (!yes) return;
     setBulkAssigning(true);
     try {
-      const ok = await assignLeadsBulk(ids, bulkAssignRepId);
+      const ok = await assignLeadsBulk(ids, userId);
       if (ok === 0) {
         toast.error('تعذر تعيين الليدز المحددة');
         return;
@@ -3823,12 +3826,37 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
       if (ok < ids.length) {
         toast.warning(`تم تعيين ${ok} من ${ids.length} ليد`);
       } else {
-        toast.success(`تم تعيين ${ok} ليد للمندوب ${rep.name}`);
+        toast.success(
+          ids.length === 1
+            ? `تم التعيين إلى ${assignLabel}`
+            : `تم تعيين ${ok} ليد إلى ${assignLabel}`,
+        );
       }
       clearLeadSelection();
     } finally {
       setBulkAssigning(false);
     }
+  };
+
+  const handleBulkAssign = async () => {
+    if (!bulkAssignRepId) {
+      toast.error('اختر مندوباً أولاً');
+      return;
+    }
+    const ids = Array.from(selectedLeadIdsRef.current);
+    if (ids.length === 0) return;
+    await runBulkAssign(ids, bulkAssignRepId);
+  };
+
+  const handleLeadAssignChange = (sourceLeadId: string, userId: string | undefined) => {
+    const selected = selectedLeadIdsRef.current;
+    const targetIds =
+      selected.size > 0 && selected.has(sourceLeadId) ? Array.from(selected) : [sourceLeadId];
+    if (targetIds.length > 1) {
+      void runBulkAssign(targetIds, userId);
+      return;
+    }
+    assignLead(sourceLeadId, userId);
   };
 
   const handleLeadsPageSizeChange = (size: number) => {
@@ -4381,7 +4409,9 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
 
       {entityMode === 'leads' && canManageAssignment && selectedLeadIds.size > 0 && (
         <div className="mb-4 flex flex-wrap items-center gap-3 rounded-2xl border border-[#7C6BFF]/35 bg-[#7C6BFF]/10 p-4">
-          <span className="text-sm font-black text-white">محدد: {selectedLeadIds.size}</span>
+          <span className="text-sm font-black text-white">
+            محدد: {selectedLeadIds.size} — التعيين يشمل كل الليدز المحددة
+          </span>
           <button
             type="button"
             onClick={clearLeadSelection}
@@ -4511,7 +4541,7 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
                       {canManageAssignment ? (
                         <select
                           value={lead.assignedTo || ''}
-                          onChange={(e) => assignLead(lead.id, e.target.value || undefined)}
+                          onChange={(e) => handleLeadAssignChange(lead.id, e.target.value || undefined)}
                           className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-xs min-w-[150px]"
                         >
                           <option value="">بدون تعيين</option>

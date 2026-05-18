@@ -5275,22 +5275,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (uniqueIds.length === 0) return 0;
 
     if (isServerDataMode()) {
-      let ok = 0;
-      for (const leadId of uniqueIds) {
-        try {
-          const updated = await serverPatchLead(leadId, {
+      const activityAction = userId
+        ? `تعيين المندوب: ${user?.name || ''}`
+        : 'إلغاء تعيين المندوب';
+      const results = await Promise.allSettled(
+        uniqueIds.map((leadId) =>
+          serverPatchLead(leadId, {
             assignedTo: userId || null,
-            appendActivity: {
-              action: userId ? `تعيين المندوب: ${user?.name || ''}` : 'إلغاء تعيين المندوب',
-            },
-          });
-          setLeads((prev) => prev.map((l) => (l.id === leadId ? updated : l)));
-          ok += 1;
-        } catch {
-          /* skip failed row */
-        }
-      }
-      if (ok > 0) {
+            appendActivity: { action: activityAction },
+          }),
+        ),
+      );
+      const updates = new Map<string, Lead>();
+      let ok = 0;
+      results.forEach((result, index) => {
+        if (result.status !== 'fulfilled') return;
+        updates.set(uniqueIds[index], result.value);
+        ok += 1;
+      });
+      if (updates.size > 0) {
+        setLeads((prev) => prev.map((l) => (updates.has(l.id) ? updates.get(l.id)! : l)));
         addAuditEvent({
           action: userId ? 'تعيين جماعي لليدز' : 'إلغاء تعيين جماعي لليدز',
           entityType: 'lead',
