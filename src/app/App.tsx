@@ -71,6 +71,12 @@ import {
   type LeadSourceFilter,
 } from '@/lib/leadSource';
 import { patchMyPasswordApi } from '@/lib/api/authPasswordApi';
+import {
+  getRepQuotePipelineInfo,
+  isRepQuoteInPipeline,
+  sortRepQuotesByActivity,
+  type RepQuotePipelineStepState,
+} from '@/lib/repQuotePipeline';
 import PageViewsHub from './components/PageViewsHub';
 
 // --- Shared Components ---
@@ -5865,6 +5871,106 @@ const BulkUploadModal = ({ isOpen, onClose }: any) => {
   );
 };
 
+const REP_QUOTE_STEP_DOT: Record<RepQuotePipelineStepState, string> = {
+  done: 'bg-emerald-500 border-emerald-400',
+  active: 'bg-indigo-500 border-indigo-300 ring-2 ring-indigo-400/40',
+  pending: 'bg-zinc-700 border-zinc-600',
+  failed: 'bg-rose-500 border-rose-400',
+};
+
+const RepQuotePipelineCard = ({
+  quote,
+  onOpenLead,
+}: {
+  quote: PriceQuote;
+  onOpenLead: (leadId: string) => void;
+}) => {
+  const info = getRepQuotePipelineInfo(quote);
+  const amountLabel =
+    quote.status === 'بانتظار التسعير' && !(quote.amount > 0)
+      ? 'بانتظار التسعير'
+      : quote.amount > 0
+        ? `${(quote.totalAmount ?? quote.amount).toLocaleString('ar-EG')} ج.م`
+        : '—';
+
+  return (
+    <div className="bg-[#0F1528]/80 border border-white/10 rounded-2xl p-4 space-y-3 min-w-0">
+      <div className="flex items-start justify-between gap-3 flex-wrap">
+        <div className="min-w-0 flex-1">
+          <button
+            type="button"
+            onClick={() => quote.leadId && onOpenLead(quote.leadId)}
+            className="text-right font-black text-white text-sm hover:text-indigo-300 hover:underline underline-offset-2 transition-colors"
+          >
+            {quote.title}
+          </button>
+          <p className="text-xs text-zinc-400 mt-0.5">{quote.customerName}</p>
+          <p className="text-[10px] text-zinc-500 mt-1">
+            أُرسل {new Date(quote.createdAt).toLocaleDateString('ar-EG')}
+            {quote.productionAssignedName ? ` · إنتاج: ${quote.productionAssignedName}` : ''}
+          </p>
+        </div>
+        <div className="flex flex-col items-end gap-1 shrink-0">
+          <span
+            className={`px-2.5 py-1 rounded-lg text-[10px] font-black border ${
+              info.isFailure
+                ? 'bg-rose-500/15 text-rose-200 border-rose-500/35'
+                : info.isTerminal
+                  ? 'bg-emerald-500/15 text-emerald-200 border-emerald-500/35'
+                  : 'bg-indigo-500/15 text-indigo-200 border-indigo-500/35'
+            }`}
+          >
+            {info.statusLabel}
+          </span>
+          <span className="text-[10px] text-zinc-400 font-bold">{amountLabel}</span>
+        </div>
+      </div>
+
+      <div className="overflow-x-auto pb-1 -mx-1 px-1">
+        <div className="flex items-center min-w-[520px] gap-0">
+          {info.steps.map((step, idx) => (
+            <React.Fragment key={step.key}>
+              <div className="flex flex-col items-center gap-1 min-w-[72px] max-w-[88px]">
+                <div
+                  className={`h-3 w-3 rounded-full border-2 shrink-0 ${REP_QUOTE_STEP_DOT[step.state]}`}
+                  title={step.label}
+                />
+                <span
+                  className={`text-[9px] font-black text-center leading-tight ${
+                    step.state === 'active'
+                      ? 'text-indigo-200'
+                      : step.state === 'done'
+                        ? 'text-emerald-300/90'
+                        : step.state === 'failed'
+                          ? 'text-rose-300'
+                          : 'text-zinc-500'
+                  }`}
+                >
+                  {step.label}
+                </span>
+                <span className="text-[8px] text-zinc-600 text-center leading-tight">{step.sub}</span>
+              </div>
+              {idx < info.steps.length - 1 && (
+                <div
+                  className={`flex-1 h-0.5 min-w-[12px] mb-4 rounded-full ${
+                    step.state === 'done' && info.steps[idx + 1]?.state !== 'pending'
+                      ? 'bg-emerald-500/60'
+                      : step.state === 'failed'
+                        ? 'bg-rose-500/40'
+                        : 'bg-zinc-700'
+                  }`}
+                />
+              )}
+            </React.Fragment>
+          ))}
+        </div>
+      </div>
+
+      {info.statusHint ? <p className="text-[11px] text-zinc-400 leading-relaxed">{info.statusHint}</p> : null}
+    </div>
+  );
+};
+
 const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTab?: (tab: string) => void }) => {
   const { leads, logLeadInteraction, updateLeadStatus, setLeadFollowUp, printBrandingSettings, priceQuotes, repRecordClientAcceptance, repRecordClientRejection } = useData();
   const [quoteLead, setQuoteLead] = useState<Lead | null>(null);
@@ -5920,6 +6026,13 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
   const myApprovedQuotes = useMemo(
     () => (priceQuotes as PriceQuote[]).filter((q) => q.status === 'معتمد' && q.createdById === currentUser.id),
     [priceQuotes, currentUser.id]
+  );
+  const myPipelineQuotes = useMemo(
+    () =>
+      (priceQuotes as PriceQuote[])
+        .filter((q) => isRepQuoteInPipeline(q, currentUser.id))
+        .sort(sortRepQuotesByActivity),
+    [priceQuotes, currentUser.id],
   );
   const [followUpDrafts, setFollowUpDrafts] = useState<Record<string, string>>({});
   const [leadFilter, setLeadFilter] = useState<'all' | 'today' | 'overdue'>('all');
@@ -6348,13 +6461,37 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
         </div>
       )}
 
+      {/* ===== مسار طلبات عروض الأسعار (إنتاج → مالك → عميل) ===== */}
+      {myPipelineQuotes.length > 0 && (
+        <div className="bg-indigo-500/10 border border-indigo-500/25 rounded-[3rem] p-6 space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <p className="text-lg font-black text-indigo-200">مسار طلبات عروض الأسعار</p>
+              <p className="text-xs text-zinc-400 mt-1">
+                تتبّع مراحل طلبك: مدير الإنتاج (تسعير) → اعتماد المالك (الدفع) → تقديم للعميل
+              </p>
+            </div>
+            <span className="px-3 py-1.5 rounded-xl text-xs font-black bg-indigo-500/25 text-indigo-200 border border-indigo-500/40">
+              {myPipelineQuotes.length} طلب جارٍ
+            </span>
+          </div>
+          <div className="space-y-3">
+            {myPipelineQuotes.map((q) => (
+              <RepQuotePipelineCard key={q.id} quote={q} onOpenLead={openLeadClient360} />
+            ))}
+          </div>
+        </div>
+      )}
+
       {/* ===== عروض معتمدة — بانتظار موافقة العميل ===== */}
       {myApprovedQuotes.length > 0 && (
         <div className="bg-emerald-500/10 border border-emerald-500/25 rounded-[3rem] p-6 space-y-4">
           <div className="flex items-center justify-between gap-3 flex-wrap">
             <div>
               <p className="text-lg font-black text-emerald-200">عروض أسعار معتمدة — قدمها للعميل</p>
-              <p className="text-xs text-zinc-400 mt-1">هذه العروض اعتمدها المالك وتنتظر ردك بعد عرضها على العميل. سجل الموافقة أو الرفض.</p>
+              <p className="text-xs text-zinc-400 mt-1">
+                المرحلة ٣ من المسار: اعتماد المالك تم — سجّل موافقة العميل وشروط الدفع الفعلية لإنشاء الفاتورة وأمر الشغل.
+              </p>
             </div>
             <span className="px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-500/25 text-emerald-200 border border-emerald-500/40">
               {myApprovedQuotes.length} عرض
