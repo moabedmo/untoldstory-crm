@@ -12,6 +12,7 @@ function rowToJson(row) {
     callsTarget: row.callsTarget,
     dailyCallsTarget: row.dailyCallsTarget,
     weeklyCallsTarget: row.weeklyCallsTarget,
+    commissionPercent: Number(row.commissionPercent) || 0,
   };
 }
 
@@ -45,6 +46,7 @@ router.patch('/:repId', requireAuth(), async (req, res) => {
       callsTarget: 80,
       dailyCallsTarget: 8,
       weeklyCallsTarget: 40,
+      commissionPercent: 0,
     };
     const data = {
       leadsTarget:
@@ -63,6 +65,10 @@ router.patch('/:repId', requireAuth(), async (req, res) => {
         patch.weeklyCallsTarget != null
           ? Math.max(0, Math.round(Number(patch.weeklyCallsTarget) || 0))
           : base.weeklyCallsTarget,
+      commissionPercent:
+        patch.commissionPercent != null
+          ? Math.min(100, Math.max(0, Number(patch.commissionPercent) || 0))
+          : base.commissionPercent,
     };
     const row = await prisma.monthlyTarget.upsert({
       where: { repId },

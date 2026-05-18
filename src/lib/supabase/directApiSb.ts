@@ -1025,6 +1025,7 @@ export async function patchMonthlyTargetSb(repId: string, patch: Partial<Monthly
         callsTarget: 80,
         dailyCallsTarget: 8,
         weeklyCallsTarget: 40,
+        commissionPercent: 0,
       };
   const data = {
     rep_id: repId,
@@ -1039,6 +1040,10 @@ export async function patchMonthlyTargetSb(repId: string, patch: Partial<Monthly
       patch.weeklyCallsTarget != null
         ? Math.max(0, Math.round(Number(patch.weeklyCallsTarget) || 0))
         : base.weeklyCallsTarget,
+    commission_percent:
+      patch.commissionPercent != null
+        ? Math.min(100, Math.max(0, Number(patch.commissionPercent) || 0))
+        : base.commissionPercent,
   };
   const { data: row, error } = await sb
     .from('monthly_targets')

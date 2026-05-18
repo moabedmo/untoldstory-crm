@@ -5,6 +5,7 @@ import { requireAuth } from '../middleware/requireAuth.js';
 import { sanitizeDocJson } from '../lib/jsonDocSanitize.js';
 import { bookingRouteCatchBody } from '../lib/bookingMutationErrors.js';
 import { validateProductionManagerSpendPatch } from '../lib/bookingProductionSpendPatch.js';
+import { validateProductionWorkOrderPatch } from '../lib/bookingWorkOrderPatch.js';
 
 const router = Router();
 
@@ -63,6 +64,14 @@ router.post('/', requireAuth(), async (req, res) => {
     if (typeof b.paymentAt === 'string' && b.paymentAt.trim()) docRaw.paymentAt = b.paymentAt.trim();
     if (typeof b.paymentExpenseId === 'string' && b.paymentExpenseId.trim())
       docRaw.paymentExpenseId = b.paymentExpenseId.trim();
+    if (b.workOrderFromQuote === true) docRaw.workOrderFromQuote = true;
+    if (b.priceQuoteId != null && String(b.priceQuoteId).trim()) docRaw.priceQuoteId = String(b.priceQuoteId).trim();
+    if (b.productionAssignedId != null && String(b.productionAssignedId).trim())
+      docRaw.productionAssignedId = String(b.productionAssignedId).trim();
+    if (b.productionAssignedName != null && String(b.productionAssignedName).trim())
+      docRaw.productionAssignedName = String(b.productionAssignedName).trim();
+    if (Array.isArray(b.workOrderChecklist) && b.workOrderChecklist.length > 0)
+      docRaw.workOrderChecklist = b.workOrderChecklist;
 
     const doc = sanitizeDocJson(docRaw);
     if (!doc.customerName || !doc.date || !doc.time || !doc.location) {
@@ -97,8 +106,15 @@ router.patch('/:id', requireAuth(), async (req, res) => {
         return res.status(403).json({ error: 'غير مصرح' });
       }
     } else if (req.authUser.role === 'مدير إنتاج') {
-      const v = validateProductionManagerSpendPatch(patch, cur);
-      if (!v.ok) return res.status(403).json({ error: v.reason || 'غير مصرح' });
+      const isWorkOrder = cur.workOrderFromQuote === true;
+      const isAssigned = String(cur.productionAssignedId || '').trim() === String(req.authUser.id || '').trim();
+      if (isWorkOrder && isAssigned) {
+        const v = validateProductionWorkOrderPatch(patch, cur, req.authUser.id);
+        if (!v.ok) return res.status(403).json({ error: v.reason || 'غير مصرح' });
+      } else {
+        const v = validateProductionManagerSpendPatch(patch, cur);
+        if (!v.ok) return res.status(403).json({ error: v.reason || 'غير مصرح' });
+      }
     } else if (patch.status != null || patch.financialStatus != null) {
       if (cur.requestedByRole === 'مدير إنتاج' && req.authUser.role !== 'مالك') {
         return res.status(403).json({ error: 'طلب مدير الإنتاج يعتمد من المالك فقط' });

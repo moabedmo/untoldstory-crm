@@ -312,6 +312,8 @@ export interface RepSnapshot {
   weeklyCallsCount: number;
   dailyCallsProgress: number;
   weeklyCallsProgress: number;
+  commissionPercent: number;
+  estimatedCommission: number;
 }
 
 export interface MonthlyTarget {
@@ -321,6 +323,8 @@ export interface MonthlyTarget {
   callsTarget: number;
   dailyCallsTarget: number;
   weeklyCallsTarget: number;
+  /** نسبة عمولة على الإيراد المحقق (صفقات فوز) — للتقارير */
+  commissionPercent: number;
 }
 
 export interface PerformanceAlert {
@@ -898,6 +902,7 @@ export interface ShootBooking {
   productionAssignedId?: string;
   productionAssignedName?: string;
   workOrderFromQuote?: boolean;
+  workOrderChecklist?: { id: string; label: string; done: boolean }[];
   financialStatus?: BookingFinancialStatusPhase;
   /** بعد اعتماد مالك + تقدير مصروف: مصروف «قيد الانتظار» يظهر بالدفاتر كالتزام */
   accrualExpenseId?: string;
@@ -1016,6 +1021,8 @@ export interface LeadIngestionChannelConfig {
 export interface LeadIngestionSettings {
   autoRouteToManager: boolean;
   managerUserId?: string;
+  /** webhook اختياري لإشعار العميل (n8n / WhatsApp / بريد) — يتجاوز VITE_CLIENT_NOTIFY_WEBHOOK_URL */
+  clientNotifyWebhookUrl?: string;
   facebook: LeadIngestionChannelConfig;
   linkedin: LeadIngestionChannelConfig;
   google: LeadIngestionChannelConfig;
@@ -1221,6 +1228,10 @@ interface DataContextType {
   addEquipmentItem: (item: Omit<EquipmentItem, 'id' | 'createdAt' | 'active'>) => boolean;
   removeEquipmentItem: (id: string) => boolean;
   updateShootBookingStatus: (id: string, status: ShootBooking['status']) => Promise<boolean>;
+  productionUpdateWorkOrder: (
+    bookingId: string,
+    patch: { workOrderChecklist?: ShootBooking['workOrderChecklist']; notes?: string; markComplete?: boolean },
+  ) => Promise<boolean>;
   updateEquipmentBookingStatus: (id: string, status: EquipmentBooking['status']) => Promise<boolean>;
   updateMeetingBookingStatus: (id: string, status: NonNullable<MeetingBooking['status']>) => Promise<boolean>;
   accountantExecuteShootBookingClaim: (id: string, method: 'كاش' | 'تحويل') => Promise<boolean>;
@@ -1310,8 +1321,15 @@ const DEFAULT_CUSTODY_ACCOUNT_BY_CATEGORY: CustodyAccountByCategory = {
 };
 
 const DEFAULT_TARGETS: MonthlyTarget[] = [
-  { repId: 'u3', leadsTarget: 20, revenueTarget: 350000, callsTarget: 90, dailyCallsTarget: 8, weeklyCallsTarget: 40 },
-  { repId: 'u4', leadsTarget: 18, revenueTarget: 300000, callsTarget: 85, dailyCallsTarget: 7, weeklyCallsTarget: 35 },
+  { repId: 'u3', leadsTarget: 20, revenueTarget: 350000, callsTarget: 90, dailyCallsTarget: 8, weeklyCallsTarget: 40, commissionPercent: 5 },
+  { repId: 'u4', leadsTarget: 18, revenueTarget: 300000, callsTarget: 85, dailyCallsTarget: 7, weeklyCallsTarget: 35, commissionPercent: 5 },
+];
+
+const DEFAULT_WORK_ORDER_CHECKLIST: NonNullable<ShootBooking['workOrderChecklist']> = [
+  { id: 'wo-prep', label: 'تأكيد الموعد والموقع مع العميل', done: false },
+  { id: 'wo-team', label: 'تجهيز الفريق والمعدات', done: false },
+  { id: 'wo-shoot', label: 'تنفيذ جلسة التصوير', done: false },
+  { id: 'wo-deliver', label: 'تسليم المخرجات للعميل', done: false },
 ];
 
 const CUSTODY_ASSET_ACCOUNT_CODE = '1150';
@@ -1341,6 +1359,7 @@ const DEFAULT_PRINT_BRANDING: PrintBrandingSettings = {
 const DEFAULT_LEAD_INGESTION_SETTINGS: LeadIngestionSettings = {
   autoRouteToManager: true,
   managerUserId: 'u2',
+  clientNotifyWebhookUrl: '',
   facebook: {
     connected: false,
     label: 'Facebook Page',
@@ -2379,6 +2398,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           callsTarget: typeof t.callsTarget === 'number' ? t.callsTarget : 80,
           dailyCallsTarget: typeof (t as any).dailyCallsTarget === 'number' ? (t as any).dailyCallsTarget : 8,
           weeklyCallsTarget: typeof (t as any).weeklyCallsTarget === 'number' ? (t as any).weeklyCallsTarget : 40,
+          commissionPercent: typeof (t as any).commissionPercent === 'number' ? (t as any).commissionPercent : 0,
         }));
         setMonthlyTargets(parsedTargets);
       }
@@ -2567,6 +2587,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             managerUserId: typeof rawIngestion.managerUserId === 'string'
               ? rawIngestion.managerUserId
               : DEFAULT_LEAD_INGESTION_SETTINGS.managerUserId,
+            clientNotifyWebhookUrl:
+              typeof rawIngestion.clientNotifyWebhookUrl === 'string'
+                ? rawIngestion.clientNotifyWebhookUrl
+                : DEFAULT_LEAD_INGESTION_SETTINGS.clientNotifyWebhookUrl,
             facebook: { ...DEFAULT_LEAD_INGESTION_SETTINGS.facebook, ...(rawIngestion.facebook || {}) },
             linkedin: { ...DEFAULT_LEAD_INGESTION_SETTINGS.linkedin, ...(rawIngestion.linkedin || {}) },
             google: { ...DEFAULT_LEAD_INGESTION_SETTINGS.google, ...(rawIngestion.google || {}) },
@@ -3260,6 +3284,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
               managerUserId: typeof rawIngestion.managerUserId === 'string'
                 ? rawIngestion.managerUserId
                 : DEFAULT_LEAD_INGESTION_SETTINGS.managerUserId,
+              clientNotifyWebhookUrl:
+                typeof rawIngestion.clientNotifyWebhookUrl === 'string'
+                  ? rawIngestion.clientNotifyWebhookUrl
+                  : DEFAULT_LEAD_INGESTION_SETTINGS.clientNotifyWebhookUrl,
               facebook: { ...DEFAULT_LEAD_INGESTION_SETTINGS.facebook, ...(rawIngestion.facebook || {}) },
               linkedin: { ...DEFAULT_LEAD_INGESTION_SETTINGS.linkedin, ...(rawIngestion.linkedin || {}) },
               google: { ...DEFAULT_LEAD_INGESTION_SETTINGS.google, ...(rawIngestion.google || {}) },
@@ -6648,13 +6676,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       entityId: quoteId,
       details: `${quote.customerName} — سيُرسَل للمندوب لتقديمه للعميل`,
     });
-    void notifyClientChannel({
-      type: 'quote_approved',
-      quoteId,
-      customerName: quote.customerName,
-      title: quote.title,
-      totalAmount: quote.totalAmount ?? quote.amount,
-    });
+    void notifyClientChannel(
+      {
+        type: 'quote_approved',
+        quoteId,
+        customerName: quote.customerName,
+        title: quote.title,
+        totalAmount: quote.totalAmount ?? quote.amount,
+      },
+      leadIngestionSettings.clientNotifyWebhookUrl,
+    );
     return true;
   };
 
@@ -6702,6 +6733,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       productionAssignedId: pmId,
       productionAssignedName: pmName || undefined,
       workOrderFromQuote: true,
+      workOrderChecklist: DEFAULT_WORK_ORDER_CHECKLIST.map((x) => ({ ...x })),
       financialStatus: estCost > 0 ? 'بانتظار_تنفيذ_إنتاج' : 'غير_مطلوب',
       createdAt: new Date().toISOString(),
     };
@@ -6815,13 +6847,16 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (!workOrderId) {
       toast.warning('تمت الفاتورة لكن تعذر إنشاء أمر الشغل لمدير الإنتاج — راجع الحجوزات');
     }
-    void notifyClientChannel({
-      type: 'quote_won',
-      quoteId: quote.id,
-      customerName: quote.customerName,
-      title: quote.title,
-      workOrderId: workOrderId ?? undefined,
-    });
+    void notifyClientChannel(
+      {
+        type: 'quote_won',
+        quoteId: quote.id,
+        customerName: quote.customerName,
+        title: quote.title,
+        workOrderId: workOrderId ?? undefined,
+      },
+      leadIngestionSettings.clientNotifyWebhookUrl,
+    );
     return true;
   };
 
@@ -7423,7 +7458,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         callsTarget: 80,
         dailyCallsTarget: 8,
         weeklyCallsTarget: 40,
+        commissionPercent: 0,
       };
+      const commissionPct = Math.min(100, Math.max(0, Number(target.commissionPercent) || 0));
+      const estimatedCommission = Math.round(revenue * (commissionPct / 100));
       const callsCount = assigned.reduce((sum, lead) => {
         const c = lead.timeline.filter(a => {
           if (a.userId !== rep.id) return false;
@@ -7504,6 +7542,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         leadsWithConfirmedContact,
         confirmedContactCoverage,
         documentationQualityScore,
+        commissionPercent: commissionPct,
+        estimatedCommission,
       };
     });
   }, [users, leads, monthlyTargets]);
@@ -7541,6 +7581,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 callsTarget: patch.callsTarget || 80,
                 dailyCallsTarget: patch.dailyCallsTarget || 8,
                 weeklyCallsTarget: patch.weeklyCallsTarget || 40,
+                commissionPercent: patch.commissionPercent ?? 0,
               },
             ];
         return next;
@@ -8116,6 +8157,38 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       entityType: 'system',
       entityId: id,
       details: `status=${status} financial=${patchBody.financialStatus} accrual=${patchBody.accrualExpenseId || '—'}`,
+    });
+    return true;
+  };
+
+  const productionUpdateWorkOrder = async (
+    bookingId: string,
+    patch: { workOrderChecklist?: ShootBooking['workOrderChecklist']; notes?: string; markComplete?: boolean },
+  ): Promise<boolean> => {
+    if (currentUser?.role !== 'مدير إنتاج') return false;
+    const target = shootBookings.find((b) => b.id === bookingId);
+    if (!target?.workOrderFromQuote) return false;
+    if (String(target.productionAssignedId || '').trim() !== String(currentUser.id).trim()) return false;
+    const body: Partial<ShootBooking> = {};
+    if (patch.workOrderChecklist) body.workOrderChecklist = patch.workOrderChecklist;
+    if (patch.notes != null) body.notes = patch.notes;
+    if (patch.markComplete) body.status = 'مكتمل';
+    if (Object.keys(body).length === 0) return false;
+    if (isServerDataMode()) {
+      try {
+        const saved = await patchShootBookingApi(bookingId, body);
+        setShootBookings((prev) => prev.map((b) => (b.id === bookingId ? saved : b)));
+      } catch {
+        return false;
+      }
+    } else {
+      setShootBookings((prev) => prev.map((b) => (b.id === bookingId ? { ...b, ...body } : b)));
+    }
+    addAuditEvent({
+      action: patch.markComplete ? 'إكمال أمر شغل' : 'تحديث أمر شغل',
+      entityType: 'system',
+      entityId: bookingId,
+      details: target.customerName,
     });
     return true;
   };
@@ -9468,7 +9541,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       shootBookings: shootBookings.filter((b) => !deletedShootIdsRef.current.has(b.id)),
       equipmentBookings: equipmentBookings.filter((b) => !deletedEquipIdsRef.current.has(b.id)),
       meetingBookings: meetingBookings.filter((b) => !deletedMeetIdsRef.current.has(b.id)),
-      otherBookings, equipmentItems, addShootBooking, addEquipmentBooking, addMeetingBooking, addOtherBooking, removeOtherBooking, removeShootBooking, removeEquipmentBooking, removeMeetingBooking, addEquipmentItem, removeEquipmentItem, updateShootBookingStatus, updateEquipmentBookingStatus, updateMeetingBookingStatus, accountantExecuteShootBookingClaim, accountantExecuteEquipmentBookingClaim, accountantExecuteMeetingBookingClaim, productionSubmitBookingSpendToAccountant,
+      otherBookings, equipmentItems, addShootBooking, addEquipmentBooking, addMeetingBooking, addOtherBooking, removeOtherBooking, removeShootBooking, removeEquipmentBooking, removeMeetingBooking, addEquipmentItem, removeEquipmentItem, updateShootBookingStatus, productionUpdateWorkOrder, updateEquipmentBookingStatus, updateMeetingBookingStatus, accountantExecuteShootBookingClaim, accountantExecuteEquipmentBookingClaim, accountantExecuteMeetingBookingClaim, productionSubmitBookingSpendToAccountant,
       printBrandingSettings, updatePrintBrandingSettings,
       leadIngestionSettings, updateLeadIngestionSettings,
       slaEscalationSettings, updateSlaEscalationSettings,

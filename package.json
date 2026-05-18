@@ -16,7 +16,11 @@
     "check:scenarios": "node scripts/run-system-scenarios.mjs",
     "check:accounting": "node scripts/accounting-invariants.mjs",
     "check:system": "npm run check:wiring && npm run check:scenarios && npm run check:accounting",
-    "verify": "npm run build && node scripts/verify-workspace.mjs && npm run check:system"
+    "verify": "npm run build && node scripts/verify-workspace.mjs && npm run check:system",
+    "db:apply-rls": "node scripts/apply-supabase-rls.mjs",
+    "db:apply-pending": "node scripts/apply-db-pending.mjs",
+    "n8n:setup-notify": "node scripts/setup-n8n-client-notify.mjs",
+    "uat:auto": "node scripts/run-uat-automated.mjs"
   },
   "dependencies": {
     "@emotion/react": "11.14.0",
@@ -84,6 +88,7 @@
     "concurrently": "^9.2.1",
     "dotenv": "^17.4.2",
     "marked": "^18.0.2",
+    "pg": "^8.20.0",
     "tailwindcss": "4.1.12",
     "typescript": "~5.7.3",
     "vite": "6.3.5"

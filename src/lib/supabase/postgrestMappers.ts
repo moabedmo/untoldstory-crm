@@ -381,6 +381,7 @@ export function mapMonthlyTargetFromRow(r: Record<string, unknown>): MonthlyTarg
     callsTarget: Number(r.calls_target) || 0,
     dailyCallsTarget: Number(r.daily_calls_target) || 0,
     weeklyCallsTarget: Number(r.weekly_calls_target) || 0,
+    commissionPercent: Number(r.commission_percent) || 0,
   };
 }
 

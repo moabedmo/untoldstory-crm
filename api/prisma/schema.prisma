@@ -184,6 +184,7 @@ model MonthlyTarget {
   callsTarget       Int    @default(0) @map("calls_target")
   dailyCallsTarget  Int    @default(0) @map("daily_calls_target")
   weeklyCallsTarget Int    @default(0) @map("weekly_calls_target")
+  commissionPercent Float  @default(0) @map("commission_percent")
   user              User   @relation(fields: [repId], references: [id], onDelete: Cascade)
 
   @@map("monthly_targets")

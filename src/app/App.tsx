@@ -3550,9 +3550,12 @@ const PriceQuoteSubmitModal = ({
 
 // --- Leads Workspace ---
 
+const LEADS_PAGE_SIZE = 25;
+
 const LeadsWorkspace = () => {
   const { leads, users, invoices, expenses, priceQuotes, shootBookings, equipmentBookings, meetingBookings, manualCustomers, currentUser, addLead, addManualCustomer, assignLead, updateLeadStatus, deleteLead } = useData();
   const [search, setSearch] = useState('');
+  const [leadsPage, setLeadsPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState<'الكل' | LeadStatus>('الكل');
   const [sourceFilter, setSourceFilter] = useState<LeadSourceFilter>('all');
   const [assignedFilter, setAssignedFilter] = useState<'all' | 'mine' | 'unassigned'>('all');
@@ -3738,6 +3741,20 @@ const LeadsWorkspace = () => {
 
     return result;
   }, [leads, invoices, priceQuotes, currentUser, assignedFilter, statusFilter, sourceFilter, overdueOnly, repUserFilterId, search]);
+
+  const leadsPageCount = Math.max(1, Math.ceil(visibleLeads.length / LEADS_PAGE_SIZE));
+  const paginatedLeads = useMemo(() => {
+    const start = (leadsPage - 1) * LEADS_PAGE_SIZE;
+    return visibleLeads.slice(start, start + LEADS_PAGE_SIZE);
+  }, [visibleLeads, leadsPage]);
+
+  useEffect(() => {
+    setLeadsPage(1);
+  }, [search, statusFilter, sourceFilter, assignedFilter, overdueOnly, repUserFilterId, entityMode, currentUser?.id]);
+
+  useEffect(() => {
+    if (leadsPage > leadsPageCount) setLeadsPage(leadsPageCount);
+  }, [leadsPage, leadsPageCount]);
 
   const inboundHubStats = useMemo(() => {
     if (!isLeadsDistributionHub) return null;
@@ -4285,7 +4302,7 @@ const LeadsWorkspace = () => {
               )}
             </thead>
             <tbody className="divide-y divide-white/10">
-              {entityMode === 'leads' ? visibleLeads.map((lead) => {
+              {entityMode === 'leads' ? paginatedLeads.map((lead) => {
                 const assignedRep = users.find(u => u.id === lead.assignedTo);
                 return (
                   <tr key={lead.id} className="hover:bg-white/[0.03] transition-colors">
@@ -4449,6 +4466,35 @@ const LeadsWorkspace = () => {
           <div className="p-12 text-center text-zinc-400">
             <Users className="w-10 h-10 mx-auto mb-3 opacity-30" />
             لا توجد نتائج مطابقة للفلاتر الحالية
+          </div>
+        )}
+
+        {entityMode === 'leads' && visibleLeads.length > LEADS_PAGE_SIZE && (
+          <div className="flex items-center justify-between gap-3 px-6 py-4 border-t border-white/10 bg-[#0B1020]/50 flex-wrap">
+            <p className="text-xs text-zinc-400">
+              عرض {(leadsPage - 1) * LEADS_PAGE_SIZE + 1}–{Math.min(leadsPage * LEADS_PAGE_SIZE, visibleLeads.length)} من {visibleLeads.length}
+            </p>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={leadsPage <= 1}
+                onClick={() => setLeadsPage((p) => Math.max(1, p - 1))}
+                className="px-3 py-1.5 rounded-xl text-xs font-black border border-white/15 bg-white/5 disabled:opacity-40"
+              >
+                السابق
+              </button>
+              <span className="text-xs text-zinc-300 font-bold px-2">
+                {leadsPage} / {leadsPageCount}
+              </span>
+              <button
+                type="button"
+                disabled={leadsPage >= leadsPageCount}
+                onClick={() => setLeadsPage((p) => Math.min(leadsPageCount, p + 1))}
+                className="px-3 py-1.5 rounded-xl text-xs font-black border border-white/15 bg-white/5 disabled:opacity-40"
+              >
+                التالي
+              </button>
+            </div>
           </div>
         )}
       </div>
@@ -5249,6 +5295,19 @@ const SalesManagerSettings = ({
                 تثبيت المدير الحالي كمستلم
               </button>
             )}
+          </div>
+          <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 space-y-2">
+            <p className="text-sm font-black text-zinc-200">إشعار العميل (Webhook)</p>
+            <p className="text-[11px] text-zinc-500">
+              عند اعتماد عرض السعر أو موافقة العميل — اربط n8n (ملف n8n/client-notify.workflow.json) أو أي بوابة واتساب/بريد.
+            </p>
+            <input
+              type="url"
+              value={leadIngestionSettings.clientNotifyWebhookUrl || ''}
+              onChange={(e) => updateLeadIngestionSettings({ clientNotifyWebhookUrl: e.target.value.trim() })}
+              placeholder="https://n8n.example.com/webhook/client-notify"
+              className="w-full bg-[#0F1528] border border-white/10 rounded-xl px-3 py-2 text-sm"
+            />
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -6997,6 +7056,7 @@ const RepPerformanceView = ({ currentUser, onGoToTab }: { currentUser: User; onG
         <StatCard title="صفقات خسارة" value={snapshot.lostDeals} icon={AlertCircle} onClick={() => goMyLeads(false)} />
         <StatCard title="متوسط الرد" value={`${snapshot.avgResponseMins} دقيقة`} icon={Clock} onClick={() => goMyLeads(true)} />
         <StatCard title="الإيراد" value={`${snapshot.revenue.toLocaleString()} ج.م`} icon={DollarSign} onClick={() => goMyLeads(false)} />
+        <StatCard title="عمولة تقديرية" value={`${snapshot.estimatedCommission.toLocaleString()} ج.م`} icon={DollarSign} onClick={() => goMyLeads(false)} />
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
@@ -8302,7 +8362,7 @@ const TeamPerformanceHub = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }
             {snapshots.map((rep) => (
               <div key={`${rep.repId}-target`} className="bg-[#0F1528]/70 border border-white/10 rounded-2xl p-4">
                 <p className="font-bold mb-3">{rep.repName}</p>
-                <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
                   <div className="space-y-1">
                     <p className="text-[10px] text-zinc-500 font-bold">هدف الليدز</p>
                     <input
@@ -8361,9 +8421,22 @@ const TeamPerformanceHub = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }
                       placeholder="هدف أسبوعي"
                     />
                   </div>
+                  <div className="space-y-1">
+                    <p className="text-[10px] text-zinc-500 font-bold">عمولة (%)</p>
+                    <input
+                      type="number"
+                      min={0}
+                      max={100}
+                      step={0.5}
+                      value={rep.commissionPercent}
+                      disabled={!canEditTargets}
+                      onChange={(e) => { void updateMonthlyTarget(rep.repId, { commissionPercent: Number(e.target.value) || 0 }); }}
+                      className="w-full bg-[#0B1020] border border-white/15 rounded-xl px-3 py-2 text-xs"
+                    />
+                  </div>
                 </div>
                 <p className="text-[11px] text-zinc-400 mt-2">
-                  إنجاز الإيراد: {rep.revenueTargetProgress.toFixed(1)}% | إنجاز شهري: {rep.callsTargetProgress.toFixed(1)}% | يومي: {rep.dailyCallsProgress.toFixed(1)}% | أسبوعي: {rep.weeklyCallsProgress.toFixed(1)}%
+                  إنجاز الإيراد: {rep.revenueTargetProgress.toFixed(1)}% | عمولة تقديرية: {rep.estimatedCommission.toLocaleString('ar-EG')} ج.م | مكالمات: {rep.callsTargetProgress.toFixed(1)}%
                 </p>
               </div>
             ))}
@@ -8956,6 +9029,7 @@ const ProductionCustodyDashboard = () => {
     hardDeleteExpense,
     productionPriceQuote,
     reassignPricingRequest,
+    productionUpdateWorkOrder,
     users,
   } = useData();
   type PricingLine = { id: string; desc: string; amount: string };
@@ -9587,16 +9661,26 @@ const ProductionCustodyDashboard = () => {
               لا توجد أوامر شغل نشطة — تظهر هنا بعد موافقة العميل على عرض سعر سعّرتَه.
             </div>
           ) : (
-            myWorkOrders.map((b) => (
-              <div key={b.id} className="bg-emerald-500/10 border border-emerald-500/25 rounded-3xl p-5 space-y-2">
+            myWorkOrders.map((b) => {
+              const checklist = b.workOrderChecklist?.length
+                ? b.workOrderChecklist
+                : [
+                    { id: 'wo-prep', label: 'تأكيد الموعد والموقع مع العميل', done: false },
+                    { id: 'wo-team', label: 'تجهيز الفريق والمعدات', done: false },
+                    { id: 'wo-shoot', label: 'تنفيذ جلسة التصوير', done: false },
+                    { id: 'wo-deliver', label: 'تسليم المخرجات للعميل', done: false },
+                  ];
+              const allDone = checklist.every((t) => t.done);
+              return (
+              <div key={b.id} className="bg-emerald-500/10 border border-emerald-500/25 rounded-3xl p-5 space-y-3">
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div>
                     <p className="font-black text-white">{b.customerName}</p>
                     <p className="text-xs text-zinc-400">من عرض سعر معتمد — المندوب: {b.repName}</p>
                     {b.priceQuoteId && <p className="text-[10px] text-zinc-500">مرجع عرض: {b.priceQuoteId}</p>}
                   </div>
-                  <span className="px-2 py-1 rounded-lg text-[10px] font-black bg-emerald-500/20 text-emerald-200 border border-emerald-500/30">
-                    أمر شغل
+                  <span className={`px-2 py-1 rounded-lg text-[10px] font-black border ${b.status === 'مكتمل' ? 'bg-zinc-700/50 text-zinc-300 border-white/10' : 'bg-emerald-500/20 text-emerald-200 border-emerald-500/30'}`}>
+                    {b.status === 'مكتمل' ? 'مكتمل' : 'أمر شغل نشط'}
                   </span>
                 </div>
                 <p className="text-sm text-zinc-300">
@@ -9605,12 +9689,44 @@ const ProductionCustodyDashboard = () => {
                 {b.estimatedCost ? (
                   <p className="text-xs text-amber-200">تكلفة تقديرية: {b.estimatedCost.toLocaleString('ar-EG')} ج.م</p>
                 ) : null}
+                <div className="space-y-2">
+                  <p className="text-xs font-black text-zinc-300">مهام التنفيذ</p>
+                  {checklist.map((task) => (
+                    <label key={task.id} className="flex items-center gap-2 text-sm text-zinc-300 cursor-pointer">
+                      <input
+                        type="checkbox"
+                        checked={task.done}
+                        disabled={b.status === 'مكتمل'}
+                        onChange={async (e) => {
+                          const next = checklist.map((t) => (t.id === task.id ? { ...t, done: e.target.checked } : t));
+                          const ok = await productionUpdateWorkOrder(b.id, { workOrderChecklist: next });
+                          if (!ok) toast.error('تعذر حفظ المهمة');
+                        }}
+                        className="rounded border-white/20"
+                      />
+                      <span className={task.done ? 'line-through text-zinc-500' : ''}>{task.label}</span>
+                    </label>
+                  ))}
+                </div>
                 {b.notes ? (
                   <p className="text-xs text-zinc-400 whitespace-pre-wrap bg-black/20 rounded-xl p-3 border border-white/5">{b.notes}</p>
                 ) : null}
-                <p className="text-[10px] text-zinc-500">نفّذ من تبويب «الحجوزات» — حالة: {b.status}</p>
+                {b.status !== 'مكتمل' && (
+                  <button
+                    type="button"
+                    disabled={!allDone}
+                    onClick={async () => {
+                      const ok = await productionUpdateWorkOrder(b.id, { markComplete: true, workOrderChecklist: checklist });
+                      if (ok) toast.success('تم إغلاق أمر الشغل');
+                      else toast.error(allDone ? 'تعذر الإغلاق' : 'أكمل جميع المهام أولاً');
+                    }}
+                    className="w-full py-2.5 rounded-xl text-sm font-black bg-emerald-600 text-white hover:bg-emerald-500 disabled:opacity-40 transition-colors"
+                  >
+                    إغلاق أمر الشغل
+                  </button>
+                )}
               </div>
-            ))
+            ); })
           )}
         </div>
       )}
