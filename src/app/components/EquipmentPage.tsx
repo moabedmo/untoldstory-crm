@@ -15,6 +15,7 @@ import { motion as Motion } from 'motion/react';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { toast } from 'sonner';
 import { useTranslation } from 'react-i18next';
+import { useAppDirection } from '../hooks/useAppDirection';
 import { useData } from '../context/DataContext';
 
 const COLORS = ['#6366F1', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
@@ -23,6 +24,7 @@ const DEFAULT_CATEGORIES = ['كاميرات', 'مثبتات', 'إضاءة', 'ص�
 
 export default function EquipmentPage() {
   const { t } = useTranslation();
+  const { dateLocale } = useAppDirection();
   const { equipmentItems, addEquipmentItem, removeEquipmentItem, currentUser } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
@@ -269,7 +271,7 @@ export default function EquipmentPage() {
                               onClick={(e) => {
                                 e.stopPropagation();
                                 setOpenMenuId(null);
-                                if (!window.confirm(`حذف «${item.name}» نهائياً من قائمة المعدات؟`)) return;
+                                if (!window.confirm(t('equipmentPage.deleteConfirm', { name: item.name }))) return;
                                 removeEquipmentItem(item.id);
                               }}
                             >
@@ -287,7 +289,7 @@ export default function EquipmentPage() {
                       <div className={`h-2 w-2 rounded-full ${item.active ? 'bg-[#10B981]' : 'bg-zinc-600'}`} />
                       <span className="text-xs text-zinc-400 font-medium">{item.active ? t('equipmentPage.activeInSystem') : t('equipmentPage.disabled')}</span>
                     </div>
-                    <span className="text-[11px] font-bold text-zinc-600">أُضيف {formatArDate(item.createdAt)}</span>
+                    <span className="text-[11px] font-bold text-zinc-600">{t('equipmentPage.addedOn', { date: formatDate(item.createdAt, dateLocale) })}</span>
                   </div>
                 </div>
               </Motion.div>
@@ -299,15 +301,16 @@ export default function EquipmentPage() {
   );
 }
 
-function formatArDate(iso: string) {
+function formatDate(iso: string, locale: string) {
   try {
-    return new Date(iso).toLocaleDateString('ar-EG', { day: 'numeric', month: 'short' });
+    return new Date(iso).toLocaleDateString(locale, { day: 'numeric', month: 'short' });
   } catch {
     return iso;
   }
 }
 
 function CategoryCard({ icon: Icon, label, count, color }: { icon: typeof Camera; label: string; count: number; color: string }) {
+  const { t } = useTranslation();
   return (
     <div className="bg-[#18181B] border border-zinc-800 p-4 rounded-xl flex flex-col items-center justify-center gap-3 group hover:border-[#6366F1]/50 transition-all cursor-default">
       <div
@@ -318,7 +321,7 @@ function CategoryCard({ icon: Icon, label, count, color }: { icon: typeof Camera
       </div>
       <div className="text-center">
         <p className="text-xs font-bold text-white mb-0.5">{label}</p>
-        <p className="text-[10px] text-zinc-500 font-medium">{count} وحدة</p>
+        <p className="text-[10px] text-zinc-500 font-medium">{t('equipmentPage.unitsCount', { count })}</p>
       </div>
     </div>
   );

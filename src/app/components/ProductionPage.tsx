@@ -90,7 +90,7 @@ export default function ProductionPage() {
     for (const b of scopedShoot) {
       out.push({
         id: `sh-${b.id}`,
-        title: `تصوير — ${b.customerName}`,
+        title: t('productionPage.shootTitle', { name: b.customerName }),
         client: b.customerName,
         statusKey: statusToFilter(b.status),
         date: formatLocaleDate(b.date, dateLocale),
@@ -117,7 +117,7 @@ export default function ProductionPage() {
       out.push({
         id: `mt-${b.id}`,
         title: b.title,
-        client: b.leadId ? `ليد ${b.leadId.slice(0, 6)}…` : '—',
+        client: b.leadId ? t('productionPage.leadPrefix', { id: b.leadId.slice(0, 6) }) : '—',
         statusKey: statusToFilter(b.status),
         date: formatLocaleDate(b.date, dateLocale),
         time: b.startTime,
@@ -186,7 +186,7 @@ export default function ProductionPage() {
       </div>
 
       {visible.length === 0 ? (
-        <div className="bg-[#18181B] border border-zinc-800 rounded-2xl p-12 text-center text-zinc-500 text-sm">لا توجد عناصر مطابقة للتصفية.</div>
+        <div className="bg-[#18181B] border border-zinc-800 rounded-2xl p-12 text-center text-zinc-500 text-sm">{t('productionPage.noFilterMatches')}</div>
       ) : (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {visible.map((prod) => {
@@ -217,7 +217,7 @@ export default function ProductionPage() {
                       vs === 'in_progress' ? 'bg-[#10B981]/10 text-[#10B981] animate-pulse' : vs === 'completed' ? 'bg-zinc-800 text-zinc-500' : 'bg-zinc-800 text-[#6366F1]'
                     }`}
                   >
-                    {prod.statusKey}
+                    {filterLabels[prod.statusKey]}
                   </div>
                 </div>
 
@@ -225,28 +225,28 @@ export default function ProductionPage() {
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-[#09090B] border border-zinc-800/50">
                     <Calendar className="h-4 w-4 text-zinc-500 shrink-0" />
                     <div>
-                      <p className="text-[10px] text-zinc-500 font-bold uppercase">التاريخ</p>
+                      <p className="text-[10px] text-zinc-500 font-bold uppercase">{t('productionPage.colDate')}</p>
                       <p className="text-sm text-white font-bold">{prod.date}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-[#09090B] border border-zinc-800/50">
                     <Clock className="h-4 w-4 text-zinc-500 shrink-0" />
                     <div>
-                      <p className="text-[10px] text-zinc-500 font-bold uppercase">الوقت</p>
+                      <p className="text-[10px] text-zinc-500 font-bold uppercase">{t('productionPage.colTime')}</p>
                       <p className="text-sm text-white font-bold">{prod.time}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-[#09090B] border border-zinc-800/50">
                     <MapPin className="h-4 w-4 text-zinc-500 shrink-0" />
                     <div className="min-w-0">
-                      <p className="text-[10px] text-zinc-500 font-bold uppercase">الموقع</p>
+                      <p className="text-[10px] text-zinc-500 font-bold uppercase">{t('productionPage.colLocation')}</p>
                       <p className="text-sm text-white font-bold truncate">{prod.location}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-3 p-3 rounded-xl bg-[#09090B] border border-zinc-800/50">
                     <Users className="h-4 w-4 text-zinc-500 shrink-0" />
                     <div className="min-w-0">
-                      <p className="text-[10px] text-zinc-500 font-bold uppercase">المسؤول</p>
+                      <p className="text-[10px] text-zinc-500 font-bold uppercase">{t('productionPage.colOwner')}</p>
                       <p className="text-sm text-white font-bold truncate">{prod.team}</p>
                     </div>
                   </div>
@@ -277,14 +277,14 @@ export default function ProductionPage() {
                               if (prod.id.startsWith('sh-')) ok = await removeShootBooking(rawId);
                               else if (prod.id.startsWith('eq-')) ok = await removeEquipmentBooking(rawId);
                               else if (prod.id.startsWith('mt-')) ok = await removeMeetingBooking(rawId);
-                              if (ok) toast.success('تم حذف الطلب');
-                              else toast.error('تعذر الحذف — تحقق من الصلاحيات');
+                              if (ok) toast.success(t('productionPage.deleteSuccess'));
+                              else toast.error(t('productionPage.deleteFailed'));
                             })();
                           }}
                           className="w-full flex items-center gap-2 px-4 py-2.5 text-sm text-rose-400 hover:bg-rose-500/10 transition-colors"
                         >
                           <Trash2 className="h-4 w-4" />
-                          حذف الطلب
+                          {t('productionPage.deleteRequest')}
                         </button>
                       </div>
                     )}

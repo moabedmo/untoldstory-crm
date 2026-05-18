@@ -23,7 +23,7 @@ function browserNotificationsSupported(): boolean {
 
 export default function SettingsPage() {
   const { t } = useTranslation();
-  const { dir } = useAppDirection();
+  const { dir, lang } = useAppDirection();
   const { currentUser, logout, updateEmployeeProfile, desktopNotifyWhenVisible, setDesktopNotifyWhenVisible } = useData();
   const [browserNotifyPerm, setBrowserNotifyPerm] = useState<NotificationPermission | 'unsupported'>(() =>
     browserNotificationsSupported() ? Notification.permission : 'unsupported',
@@ -114,10 +114,10 @@ export default function SettingsPage() {
               })
             }
           />
-          <SettingTab icon={Shield} label="الأمان والخصوصية" />
-          <SettingTab icon={Palette} label="المظهر" />
-          <SettingTab icon={Database} label="البيانات والنسخ" />
-          <SettingTab icon={HelpCircle} label="المساعدة والدعم" />
+          <SettingTab icon={Shield} label={t('settingsProfile.tabSecurity')} />
+          <SettingTab icon={Palette} label={t('settingsProfile.tabAppearance')} />
+          <SettingTab icon={Database} label={t('settingsProfile.tabDataBackup')} />
+          <SettingTab icon={HelpCircle} label={t('settingsProfile.tabHelp')} />
           <div className="pt-4 mt-4 border-t border-zinc-800">
             <button
               type="button"
@@ -125,20 +125,20 @@ export default function SettingsPage() {
               className="flex items-center gap-3 w-full px-4 py-2 text-red-500 hover:bg-red-500/10 rounded-xl transition-all"
             >
               <LogOut className="h-5 w-5" />
-              <span className="text-sm font-bold">تسجيل الخروج</span>
+              <span className="text-sm font-bold">{t('common.logout')}</span>
             </button>
           </div>
         </div>
 
         <div className="md:col-span-3 space-y-8">
           <div className="bg-[#18181B] border border-zinc-800 rounded-2xl p-8 shadow-xl">
-            <h3 className="text-lg font-bold text-white mb-6">المعلومات الشخصية</h3>
+            <h3 className="text-lg font-bold text-white mb-6">{t('settingsProfile.personalInfo')}</h3>
             {!currentUser ? (
-              <p className="text-sm text-zinc-500">لا يوجد مستخدم مسجّل في هذا السياق. افتح التطبيق الرئيسي وسجّل الدخول.</p>
+              <p className="text-sm text-zinc-500">{t('settingsProfile.noUserContext')}</p>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-xs text-zinc-500 font-bold uppercase tracking-wider">الاسم الكامل</label>
+                  <label className="text-xs text-zinc-500 font-bold uppercase tracking-wider">{t('settingsProfile.fullName')}</label>
                   <input
                     type="text"
                     value={name}
@@ -146,9 +146,9 @@ export default function SettingsPage() {
                     className="w-full bg-[#09090B] border border-zinc-800 rounded-xl py-2.5 px-4 text-sm text-white focus:outline-none focus:ring-2 focus:ring-[#6366F1]/50 transition-all"
                   />
                 </div>
-                <InputGroup label="الدور" value={roleLabel} disabled />
+                <InputGroup label={t('settingsProfile.role')} value={roleLabel} disabled />
                 <div className="space-y-2">
-                  <label className="text-xs text-zinc-500 font-bold uppercase tracking-wider">البريد الإلكتروني</label>
+                  <label className="text-xs text-zinc-500 font-bold uppercase tracking-wider">{t('settingsProfile.email')}</label>
                   <div className="relative">
                     <Mail className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
                     <input
@@ -159,12 +159,12 @@ export default function SettingsPage() {
                     />
                   </div>
                 </div>
-                <InputGroup label="معرّف المستخدم" value={currentUser.id} disabled />
+                <InputGroup label={t('settingsProfile.userId')} value={currentUser.id} disabled />
               </div>
             )}
             {currentUser ? (
               <div className="mt-8 space-y-4">
-                <p className="text-sm text-zinc-500">الصورة الشخصية</p>
+                <p className="text-sm text-zinc-500">{t('settingsProfile.avatarSection')}</p>
                 <div className="flex flex-col sm:flex-row sm:items-start gap-6">
                   <div className="h-20 w-20 shrink-0 rounded-2xl bg-zinc-800 overflow-hidden flex items-center justify-center text-3xl font-bold text-white">
                     {!avatarPreviewBroken && (avatarUrl.trim() || currentUser.avatar) ? (
@@ -179,7 +179,7 @@ export default function SettingsPage() {
                     )}
                   </div>
                   <div className="flex-1 space-y-2 min-w-0">
-                    <label className="text-xs text-zinc-500 font-bold uppercase tracking-wider">رابط الصورة (اختياري)</label>
+                    <label className="text-xs text-zinc-500 font-bold uppercase tracking-wider">{t('settingsProfile.avatarUrl')}</label>
                     <div className="relative">
                       <Link2 className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-zinc-500" />
                       <input
@@ -192,7 +192,7 @@ export default function SettingsPage() {
                       />
                     </div>
                     <p className="text-xs text-zinc-500">
-                      يُحفظ الرابط في قاعدة البيانات عند وضع السيرفر. افرغ الحقل ثم احفظ لإزالة الصورة إن كانت مضافة سابقاً.
+                      {t('settingsProfile.avatarUrlHint')}
                     </p>
                   </div>
                 </div>
@@ -207,22 +207,22 @@ export default function SettingsPage() {
             <div className="flex items-start gap-3 mb-6">
               <Bell className="h-6 w-6 text-[#6366F1] shrink-0 mt-0.5" />
               <div>
-                <h3 className="text-lg font-bold text-white">إشعارات المهام الشخصية</h3>
+                <h3 className="text-lg font-bold text-white">{t('settingsProfile.notifySection')}</h3>
                 <p className="text-sm text-zinc-500 mt-1">
-                  عند تعيين موعد لمهمة من الرئيسية يظهر تنبيه على الشاشة (توست). يمكن تفعيل إشعار المتصفّح لسطح المكتب إن رغبت — يعمل أثناء فتح الصفحة أو عند الإخفاء حسب الخيار أدناه.
+                  {t('settingsProfile.notifyDesktopHint')}
                 </p>
               </div>
             </div>
             {!browserNotificationsSupported() ? (
-              <p className="text-sm text-zinc-500">المتصفّح الحالي لا يدعم إشعارات سطح المكتب لهذا الموقع.</p>
+              <p className="text-sm text-zinc-500">{t('settingsProfile.browserUnsupported')}</p>
             ) : (
               <div className="space-y-4 rounded-xl border border-zinc-800 bg-[#09090B] p-5">
                 <div className="flex flex-wrap items-center justify-between gap-3">
-                  <span className="text-sm font-bold text-white">إذن الإشعارات</span>
-                  {browserNotifyPerm === 'granted' && <span className="text-xs text-emerald-400 font-bold">مفعّل</span>}
+                  <span className="text-sm font-bold text-white">{t('settingsProfile.notifyPermission')}</span>
+                  {browserNotifyPerm === 'granted' && <span className="text-xs text-emerald-400 font-bold">{t('settingsProfile.notifyEnabled')}</span>}
                   {browserNotifyPerm === 'denied' && (
                     <span className="text-xs text-rose-300 text-right max-w-md">
-                      مرفوض — غيّر الإذن من أيقونة القفل أو «إعدادات الموقع» في المتصفّح
+                      {t('settingsProfile.notifyDeniedHint')}
                     </span>
                   )}
                   {browserNotifyPerm === 'default' && (
@@ -232,15 +232,15 @@ export default function SettingsPage() {
                         try {
                           const r = await Notification.requestPermission();
                           setBrowserNotifyPerm(r);
-                          if (r === 'granted') toast.success('تم تفعيل إشعارات سطح المكتب مع تذكيرات المهام');
-                          else if (r === 'denied') toast.info('يمكنك السماح لاحقاً من إعدادات الموقع');
+                          if (r === 'granted') toast.success(t('settingsProfile.toastNotifyEnabled'));
+                          else if (r === 'denied') toast.info(t('settingsProfile.toastNotifyDeniedLater'));
                         } catch {
-                          toast.error('تعذّر طلب الإذن من هذا المتصفّح');
+                          toast.error(t('settingsProfile.toastNotifyRequestFailed'));
                         }
                       }}
                       className="text-xs font-bold px-4 py-2 rounded-lg bg-emerald-500/20 text-emerald-200 border border-emerald-500/40 hover:bg-emerald-500/30 transition-colors"
                     >
-                      السماح بالإشعارات
+                      {t('settingsProfile.enableDesktopNotify')}
                     </button>
                   )}
                 </div>
@@ -253,7 +253,7 @@ export default function SettingsPage() {
                       onChange={(e) => setDesktopNotifyWhenVisible(e.target.checked)}
                     />
                     <span>
-                      إظهار إشعار سطح المكتب حتى وأنا في هذا التبويب مفتوحاً (افتراضياً معطّل لتفادي التكرار مع التوست على الشاشة)
+                      {t('settingsProfile.notifyWhenTabOpen')}
                     </span>
                   </label>
                 )}
@@ -262,11 +262,11 @@ export default function SettingsPage() {
           </div>
 
           <div className="bg-[#18181B] border border-zinc-800 rounded-2xl p-8 shadow-xl">
-            <h3 className="text-lg font-bold text-white mb-6">إعدادات النظام (عرض)</h3>
+            <h3 className="text-lg font-bold text-white mb-6">{t('settingsProfile.systemSettingsPreview')}</h3>
             <div className="space-y-6">
-              <ToggleGroup label="اللغة" description="واجهة النظام" value="العربية" />
-              <ToggleGroup label="مصدر الجلسة" description="مصدر بيانات المستخدم" value={currentUser?.authSource === 'database' ? 'قاعدة البيانات' : 'تجريبي / محلي'} />
-              <ToggleGroup label="الاتصال" description="وضع البيانات" value={import.meta.env.VITE_DATA_SOURCE === 'server' ? 'سيرفر' : 'محلي'} />
+              <ToggleGroup label={t('settingsProfile.previewLanguage')} description={t('settingsProfile.previewLanguageDesc')} value={lang === 'en' ? t('settingsProfile.languageEnglish') : t('settingsProfile.languageArabic')} />
+              <ToggleGroup label={t('settingsProfile.previewSessionSource')} description={t('settingsProfile.previewSessionSourceDesc')} value={currentUser?.authSource === 'database' ? t('settingsProfile.sessionDatabase') : t('settingsProfile.sessionLocal')} />
+              <ToggleGroup label={t('settingsProfile.previewConnection')} description={t('settingsProfile.previewConnectionDesc')} value={import.meta.env.VITE_DATA_SOURCE === 'server' ? t('settingsProfile.connectionServer') : t('settingsProfile.connectionLocal')} />
             </div>
           </div>
 
@@ -276,14 +276,14 @@ export default function SettingsPage() {
               onClick={handleCancel}
               className="px-6 py-2.5 text-zinc-400 font-bold hover:text-white transition-all"
             >
-              إلغاء
+              {t('common.cancel')}
             </button>
             <button
               type="button"
               onClick={handleSave}
               className="bg-[#6366F1] text-white px-8 py-2.5 rounded-xl font-bold hover:bg-[#5254E2] transition-all shadow-lg shadow-[#6366F1]/20"
             >
-              حفظ التغييرات
+              {t('settingsProfile.saveChanges')}
             </button>
           </div>
         </div>

@@ -35,11 +35,11 @@ const STATUS_FILTERS: Array<'all' | LeadStatus> = [
   'مغلق - خسارة',
 ];
 
-const SOURCE_FILTERS: Array<{ id: LeadSourceFilter; label: string }> = [
-  { id: 'all', label: 'كل المصادر' },
-  { id: 'facebook', label: 'Facebook' },
-  { id: 'instagram', label: 'Instagram' },
-  { id: 'google', label: 'Google' },
+const SOURCE_FILTERS: Array<{ id: LeadSourceFilter; labelKey: string }> = [
+  { id: 'all', labelKey: 'leadsLegacy.allSources' },
+  { id: 'facebook', labelKey: 'Facebook' },
+  { id: 'instagram', labelKey: 'Instagram' },
+  { id: 'google', labelKey: 'Google' },
 ];
 
 function getStatusStyle(status: string) {
@@ -67,7 +67,8 @@ function getStatusLabel(status: string, t: TFunction) {
 
 export default function LeadsPage({ isSalesRep = false }: { isSalesRep?: boolean }) {
   const { t } = useTranslation();
-  const { dir } = useAppDirection();
+  const { dir, dateLocale } = useAppDirection();
+  const currency = t('common.currency');
   const { leads, users, currentUser, addLead, assignLead, deleteLead } = useData();
   const [searchTerm, setSearchTerm] = useState('');
   const [activeFilter, setActiveFilter] = useState<string>('all');
@@ -144,7 +145,7 @@ export default function LeadsPage({ isSalesRep = false }: { isSalesRep?: boolean
             <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-lg bg-[#18181B] border border-zinc-800 rounded-2xl shadow-2xl p-6 z-50 animate-in zoom-in-95 duration-200 focus:outline-none">
               <div className="flex items-center justify-between mb-6">
                 <Dialog.Title className="text-xl font-bold text-white">{t('leadsLegacy.addLead')}</Dialog.Title>
-                <Dialog.Description className="sr-only">استخدم هذا النموذج لإضافة عميل محتمل جديد إلى النظام.</Dialog.Description>
+                <Dialog.Description className="sr-only">{t('leadsLegacy.addLeadDesc')}</Dialog.Description>
                 <Dialog.Close className="text-zinc-500 hover:text-white transition-colors">
                   <X className="h-5 w-5" />
                 </Dialog.Close>
@@ -152,42 +153,42 @@ export default function LeadsPage({ isSalesRep = false }: { isSalesRep?: boolean
               <form onSubmit={handleAddLead} className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-zinc-400">الاسم بالكامل</label>
+                    <label className="text-xs font-bold text-zinc-400">{t('leadsLegacy.fullName')}</label>
                     <input name="name" required className="w-full bg-[#09090B] border border-zinc-800 rounded-xl py-2 px-4 text-sm text-white focus:ring-2 focus:ring-[#6366F1]/50 outline-none transition-all" />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-zinc-400">الشركة</label>
+                    <label className="text-xs font-bold text-zinc-400">{t('leadsLegacy.company')}</label>
                     <input name="company" required className="w-full bg-[#09090B] border border-zinc-800 rounded-xl py-2 px-4 text-sm text-white focus:ring-2 focus:ring-[#6366F1]/50 outline-none transition-all" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-zinc-400">رقم الهاتف</label>
+                    <label className="text-xs font-bold text-zinc-400">{t('leadsLegacy.phone')}</label>
                     <input name="phone" required className="w-full bg-[#09090B] border border-zinc-800 rounded-xl py-2 px-4 text-sm text-white focus:ring-2 focus:ring-[#6366F1]/50 outline-none transition-all" />
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-zinc-400">البريد الإلكتروني</label>
+                    <label className="text-xs font-bold text-zinc-400">{t('leadsLegacy.email')}</label>
                     <input name="email" type="email" required className="w-full bg-[#09090B] border border-zinc-800 rounded-xl py-2 px-4 text-sm text-white focus:ring-2 focus:ring-[#6366F1]/50 outline-none transition-all" />
                   </div>
                 </div>
                 <div className="grid grid-cols-2 gap-4">
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-zinc-400">المصدر</label>
+                    <label className="text-xs font-bold text-zinc-400">{t('leadsLegacy.source')}</label>
                     <select name="source" className="w-full bg-[#09090B] border border-zinc-800 rounded-xl py-2 px-4 text-sm text-white focus:ring-2 focus:ring-[#6366F1]/50 outline-none transition-all">
                       <option value="facebook">Facebook</option>
                       <option value="instagram">Instagram</option>
                       <option value="google">Google</option>
-                      <option value="يدوي">يدوي</option>
+                      <option value="يدوي">{t('leadsLegacy.sourceManual')}</option>
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <label className="text-xs font-bold text-zinc-400">الميزانية المتوقعة (ج.م)</label>
+                    <label className="text-xs font-bold text-zinc-400">{t('leadsLegacy.expectedBudget', { currency })}</label>
                     <input name="value" type="number" defaultValue="0" className="w-full bg-[#09090B] border border-zinc-800 rounded-xl py-2 px-4 text-sm text-white focus:ring-2 focus:ring-[#6366F1]/50 outline-none transition-all" />
                   </div>
                 </div>
                 <div className="pt-4">
                   <button type="submit" className="w-full bg-[#6366F1] text-white py-2.5 rounded-xl font-bold hover:bg-[#5254E2] transition-all shadow-lg shadow-[#6366F1]/20">
-                    حفظ البيانات
+                    {t('leadsLegacy.saveData')}
                   </button>
                 </div>
               </form>
@@ -258,7 +259,7 @@ export default function LeadsPage({ isSalesRep = false }: { isSalesRep?: boolean
                   sourceFilter === filter.id ? 'bg-[#1877F2] text-white border-[#1877F2]' : 'bg-[#09090B] text-zinc-500 border-zinc-800 hover:text-white'
                 }`}
               >
-                {filter.label}
+                {filter.labelKey.startsWith('leadsLegacy.') ? t(filter.labelKey) : filter.labelKey}
               </button>
             ))}
           </div>
@@ -268,13 +269,13 @@ export default function LeadsPage({ isSalesRep = false }: { isSalesRep?: boolean
           <table className="w-full text-right border-collapse">
             <thead>
               <tr className="bg-zinc-900/50 text-zinc-500 text-xs font-bold uppercase border-b border-zinc-800">
-                <th className="px-6 py-4">العميل والشركة</th>
-                <th className="px-6 py-4">المصدر</th>
-                <th className="px-6 py-4">الحالة</th>
-                <th className="px-6 py-4">الميزانية</th>
-                {!isSalesRep && <th className="px-6 py-4">المسؤول</th>}
-                <th className="px-6 py-4">التاريخ</th>
-                <th className="px-6 py-4 text-left">الإجراءات</th>
+                <th className="px-6 py-4">{t('leadsLegacy.colClient')}</th>
+                <th className="px-6 py-4">{t('leadsLegacy.colSource')}</th>
+                <th className="px-6 py-4">{t('leadsLegacy.colStatus')}</th>
+                <th className="px-6 py-4">{t('leadsLegacy.colBudget')}</th>
+                {!isSalesRep && <th className="px-6 py-4">{t('leadsLegacy.colAssignee')}</th>}
+                <th className="px-6 py-4">{t('leadsLegacy.colDate')}</th>
+                <th className="px-6 py-4 text-left">{t('leadsLegacy.colActions')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
@@ -304,7 +305,7 @@ export default function LeadsPage({ isSalesRep = false }: { isSalesRep?: boolean
                       {getStatusLabel(lead.status, t)}
                     </div>
                   </td>
-                  <td className="px-6 py-4 text-sm font-bold text-zinc-300">{(Number(lead.budget) || 0).toLocaleString()} ج.م</td>
+                  <td className="px-6 py-4 text-sm font-bold text-zinc-300">{(Number(lead.budget) || 0).toLocaleString(dateLocale)} {currency}</td>
                   {!isSalesRep && (
                     <td className="px-6 py-4">
                       {lead.assignedTo ? (
@@ -323,33 +324,33 @@ export default function LeadsPage({ isSalesRep = false }: { isSalesRep?: boolean
                           className="flex items-center gap-1 text-[10px] font-bold text-[#6366F1] hover:underline"
                         >
                           <UserPlus className="h-3 w-3" />
-                          تعيين مسؤول
+                          {t('leadsLegacy.assignBtn')}
                         </button>
                       )}
                     </td>
                   )}
-                  <td className="px-6 py-4 text-xs text-zinc-500">{new Date(lead.createdAt).toLocaleDateString('ar-EG')}</td>
+                  <td className="px-6 py-4 text-xs text-zinc-500">{new Date(lead.createdAt).toLocaleDateString(dateLocale)}</td>
                   <td className="px-6 py-4 text-left">
                     <div className="flex items-center gap-2">
-                      <button onClick={() => toast.success(`جاري الاتصال بـ ${lead.name}`)} className="p-2 text-zinc-500 hover:text-[#10B981] transition-all">
+                      <button onClick={() => toast.success(t('leadsLegacy.callingLead', { name: lead.name }))} className="p-2 text-zinc-500 hover:text-[#10B981] transition-all">
                         <Phone className="h-4 w-4" />
                       </button>
                       <button
                         type="button"
                         onClick={async () => {
                           if (!(currentUser?.role === 'مالك' || currentUser?.role === 'مدير مبيعات')) {
-                            toast.error('حذف الليد للمالك أو مدير المبيعات فقط');
+                            toast.error(t('leadsLegacy.deleteForbidden'));
                             return;
                           }
-                          if (!window.confirm(`حذف الليد «${lead.name}» نهائياً؟`)) return;
+                          if (!window.confirm(t('leadsLegacy.deleteConfirm', { name: lead.name }))) return;
                           const r: DeleteLeadResult = await deleteLead(lead.id);
-                          if (r === 'deleted') toast.success('تم حذف الليد');
-                          else if (r === 'blocked') toast.error('لا يمكن الحذف: توجد فواتير أو عروض أسعار مرتبطة بهذا الليد');
-                          else if (r === 'forbidden') toast.error('ليست لديك صلاحية حذف الليد');
-                          else toast.error('تعذر حذف الليد');
+                          if (r === 'deleted') toast.success(t('leadsLegacy.deleteSuccess'));
+                          else if (r === 'blocked') toast.error(t('leadsLegacy.deleteBlocked'));
+                          else if (r === 'forbidden') toast.error(t('leadsLegacy.deleteForbidden'));
+                          else toast.error(t('leadsLegacy.deleteFailed'));
                         }}
                         className="p-2 text-zinc-500 hover:text-red-500 transition-all"
-                        title="حذف الليد"
+                        title={t('leadsLegacy.deleteLead')}
                       >
                         <X className="h-4 w-4" />
                       </button>
@@ -364,8 +365,8 @@ export default function LeadsPage({ isSalesRep = false }: { isSalesRep?: boolean
               <div className="h-20 w-20 bg-zinc-800/50 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Search className="h-10 w-10 text-zinc-600" />
               </div>
-              <h3 className="text-lg font-bold text-white mb-2">لا يوجد نتائج</h3>
-              <p className="text-zinc-500 text-sm">جرب البحث بكلمات مختلفة أو تغيير التصفية</p>
+              <h3 className="text-lg font-bold text-white mb-2">{t('leadsLegacy.noResults')}</h3>
+              <p className="text-zinc-500 text-sm">{t('leadsLegacy.noResultsHint')}</p>
             </div>
           )}
         </div>
@@ -376,8 +377,8 @@ export default function LeadsPage({ isSalesRep = false }: { isSalesRep?: boolean
           <Dialog.Overlay className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 animate-in fade-in duration-200" />
           <Dialog.Content className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-full max-w-sm bg-[#18181B] border border-zinc-800 rounded-2xl shadow-2xl p-6 z-50 animate-in zoom-in-95 duration-200 focus:outline-none">
             <div className="flex items-center justify-between mb-6">
-              <Dialog.Title className="text-xl font-bold text-white">تعيين مسؤول مبيعات</Dialog.Title>
-              <Dialog.Description className="sr-only">اختر موظفاً من فريق المبيعات لتعيينه مسؤولاً عن هذا الليد.</Dialog.Description>
+              <Dialog.Title className="text-xl font-bold text-white">{t('leadsLegacy.assignDialogTitle')}</Dialog.Title>
+              <Dialog.Description className="sr-only">{t('leadsLegacy.assignDialogDesc')}</Dialog.Description>
               <Dialog.Close className="text-zinc-500 hover:text-white transition-colors">
                 <X className="h-5 w-5" />
               </Dialog.Close>
@@ -395,7 +396,7 @@ export default function LeadsPage({ isSalesRep = false }: { isSalesRep?: boolean
                     </div>
                     <div>
                       <p className="text-sm font-bold text-white">{rep.name}</p>
-                      <p className="text-[10px] text-zinc-500">مندوب مبيعات</p>
+                      <p className="text-[10px] text-zinc-500">{t('leadsLegacy.salesRepRole')}</p>
                     </div>
                   </div>
                   <ArrowRight className="h-4 w-4 text-zinc-600 group-hover:text-[#6366F1]" />

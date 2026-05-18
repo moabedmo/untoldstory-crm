@@ -85,7 +85,7 @@ import { REP_SKILL_PRESETS } from '@/lib/repSkills';
 import { LanguageSwitcher } from './components/LanguageSwitcher';
 import { useAppDirection } from './hooks/useAppDirection';
 import { getNavLabel } from '@/lib/navLabels';
-import { getLeadStatusLabel } from '@/lib/i18nLabels';
+import { getLeadStatusLabel, getInvoiceStatusLabel, getExpenseStatusLabel, getApprovalStatusLabel, getSlaStatusLabel, getBookingStatusLabel, getExpenseCategoryLabel, getPaymentMethodLabel, getRoleLabel, getCoaAccountTypeLabel, getBookingFinancialStatusLabel, getCustodyStatusLabel } from '@/lib/i18nLabels';
 import { useTranslation } from 'react-i18next';
 
 // --- Shared Components ---
@@ -591,7 +591,7 @@ const OwnerDashboard = ({ onGoToTab, openAccountantSubTab, openBookingsWithInten
 const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) => {
   type ExpenseCategory = Expense['category'];
   const { t } = useTranslation();
-  const { dateLocale } = useAppDirection();
+  const { dateLocale, dir } = useAppDirection();
   const currency = t('common.currency');
   const { currentUser, invoices, expenses, leads, users, addInvoice, updateInvoiceStatus, recordInvoiceCollection, addExpense, updateExpenseStatus, approveExpense, rejectExpense, closedMonths, closeMonth, reopenMonth, isMonthClosed, chartOfAccounts, addChartAccount, removeChartAccount, manualJournalEntries, addManualJournalEntry, removeManualJournalEntry, journalCodingRules, setJournalCodingRules, expenseCodingRules, setExpenseCodingRules, customerCodePrefix, setCustomerCodePrefix, expenseSavedViews, setExpenseSavedViews, payrollAutoSendDay, setPayrollAutoSendDay, closedFiscalYears, closeFiscalYear, reopenFiscalYear, getOpeningBalances, getRepSnapshots, attendanceRecords, logAttendance, payrollApprovals, payrollApprovalRequests, financialReopenRequests, approvePayroll, reopenPayroll, isPayrollApproved, requestPayrollApproval, ownerApprovePayrollRequest, ownerRejectPayrollRequest, requestMonthReopen, ownerApproveMonthReopenRequest, ownerRejectMonthReopenRequest, printBrandingSettings, addEmployee, updateEmployeeSalary, accountingPolicy, updateAccountingPolicy, priceQuotes, custodyFunds, custodyAccountByCategory, updateCustodyAccountByCategory, createCustodyFund, submitCustodyDraftToOwner, ownerApproveCustodyRequest, ownerRejectCustodyRequest, accountantRecordCustodyPayment, accountantApproveCustodySettlement, accountantRejectCustodySettlement } = useData();
   const [activeFinanceTab, setActiveFinanceTab] = useState<'invoices' | 'expenses' | 'ledger' | 'reports' | 'coa' | 'journals' | 'reps' | 'codebook' | 'custody'>('invoices');
@@ -1113,7 +1113,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
   const handleAddEmployeeFromAccountant = async () => {
     const name = newEmployeeForm.name.trim();
     if (!name) {
-      toast.error('اكتب اسم الموظف');
+      toast.error(t('finance.toastEmployeeName'));
       return;
     }
     const baseSalary = Math.max(0, Number(newEmployeeForm.baseSalary) || 0);
@@ -1129,11 +1129,11 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
     const amount = Number(invoiceForm.amount);
     const vatRate = Number(invoiceForm.vatRate);
     if (!invoiceForm.customerName.trim() || !amount || amount <= 0) {
-      toast.error('يرجى إدخال اسم العميل ومبلغ صحيح');
+      toast.error(t('finance.toastInvoiceFields'));
       return;
     }
     if (Number.isNaN(vatRate) || vatRate < 0 || vatRate > 100) {
-      toast.error('يرجى إدخال نسبة ضريبة صحيحة');
+      toast.error(t('finance.toastVatInvalid'));
       return;
     }
 
@@ -1146,7 +1146,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
       status: invoiceForm.status,
     });
     if (!created) {
-      toast.error('الشهر الحالي مقفل محاسبياً ولا يمكن إضافة فاتورة جديدة');
+      toast.error(t('finance.toastMonthClosedInvoice'));
       return;
     }
 
@@ -1160,7 +1160,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
     });
     setIsLeadPickerOpen(false);
     setIsCreateInvoiceOpen(false);
-    toast.success('تم إصدار الفاتورة بنجاح');
+    toast.success(t('finance.toastInvoiceCreated'));
   };
 
   useEffect(() => {
@@ -1184,7 +1184,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
 
   const handleAddJournalCodingRule = () => {
     if (!newJournalCoding.title.trim() || !newJournalCoding.accountCode.trim()) {
-      toast.error('أدخل اسم الكود والحساب');
+      toast.error(t('finance.toastCodeNameRequired'));
       return;
     }
     setJournalCodingRules(prev => [
@@ -1197,7 +1197,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
       },
     ]);
     setNewJournalCoding({ title: '', accountCode: chartOfAccounts[0]?.code || '1010', costCenter: 'عام' });
-    toast.success('تمت إضافة كود يومية جديد');
+    toast.success(t('finance.toastJournalCodeAdded'));
   };
 
   const applyJournalCodingRule = (ruleId: string) => {
@@ -1217,18 +1217,18 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
         description: prev.description || `قيد ${rule.title}`,
       };
     });
-    toast.success(`تم تطبيق كود اليومية: ${rule.title}`);
+    toast.success(t('finance.toastJournalCodeApplied', { title: rule.title }));
   };
 
   const handleCreateExpense = async () => {
     const amount = Number(expenseForm.amount);
     const vatRate = Number(expenseForm.vatRate);
     if (!expenseForm.title.trim() || !amount || amount <= 0) {
-      toast.error('يرجى إدخال وصف مصروف ومبلغ صحيح');
+      toast.error(t('finance.toastExpenseFields'));
       return;
     }
     if (Number.isNaN(vatRate) || vatRate < 0 || vatRate > 100) {
-      toast.error('يرجى إدخال نسبة ضريبة صحيحة');
+      toast.error(t('finance.toastVatInvalid'));
       return;
     }
     const created = await addExpense({
@@ -1242,7 +1242,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
       note: expenseForm.note.trim() || undefined,
     });
     if (!created) {
-      toast.error('الشهر الحالي مقفل محاسبياً ولا يمكن إضافة مصروف جديد');
+      toast.error(t('finance.toastMonthClosedExpense'));
       return;
     }
     setExpenseForm({
@@ -1256,7 +1256,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
       note: '',
     });
     setIsCreateExpenseOpen(false);
-    toast.success('تم تسجيل المصروف بنجاح');
+    toast.success(t('finance.toastExpenseCreated'));
   };
   useEffect(() => {
     const title = expenseForm.title.trim().toLowerCase();
@@ -1278,7 +1278,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
 
   const handleAddAccount = () => {
     if (!coaForm.code.trim() || !coaForm.name.trim()) {
-      toast.error('أدخل كود واسم الحساب');
+      toast.error(t('finance.toastCoaRequired'));
       return;
     }
     const created = addChartAccount({
@@ -1287,11 +1287,11 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
       type: coaForm.type,
     });
     if (!created) {
-      toast.error('كود الحساب موجود بالفعل أو غير مسموح');
+      toast.error(t('finance.toastCoaDuplicate'));
       return;
     }
     setCoaForm({ code: '', name: '', type: 'expense' });
-    toast.success('تمت إضافة الحساب');
+    toast.success(t('finance.toastCoaAdded'));
   };
 
   const updateJournalLine = (idx: number, patch: Partial<{ accountCode: string; debit: string; credit: string; costCenter: string }>) => {
@@ -1318,11 +1318,11 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
     const debit = lines.reduce((s, l) => s + l.debit, 0);
     const credit = lines.reduce((s, l) => s + l.credit, 0);
     if (!journalForm.description.trim()) {
-      toast.error('اكتب وصف القيد');
+      toast.error(t('finance.toastJournalDesc'));
       return;
     }
     if (Math.abs(debit - credit) > 0.01 || debit <= 0 || credit <= 0) {
-      toast.error('القيد غير متزن (المدين لازم يساوي الدائن)');
+      toast.error(t('finance.toastJournalUnbalanced'));
       return;
     }
     const ok = await addManualJournalEntry({
@@ -1331,7 +1331,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
       lines,
     });
     if (!ok) {
-      toast.error('تعذر حفظ القيد (قد تكون السنة مقفلة)');
+      toast.error(t('finance.toastJournalSaveFailed'));
       return;
     }
     setJournalForm({
@@ -1342,7 +1342,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
         { accountCode: chartOfAccounts[1]?.code || '1120', debit: '', credit: '', costCenter: 'عام' },
       ],
     });
-    toast.success('تم حفظ القيد اليدوي');
+    toast.success(t('finance.toastJournalSaved'));
   };
 
   const ledgerRows = useMemo(() => {
@@ -1440,16 +1440,17 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
   };
 
   const printPayrollReport = () => {
-    const company = escapeHtml(printBrandingSettings.companyName || 'اسم الشركة');
-    const header = escapeHtml(printBrandingSettings.reportHeader || 'تقرير داخلي');
+    const company = escapeHtml(printBrandingSettings.companyName || t('repDash.printDefaultCompany'));
+    const header = escapeHtml(printBrandingSettings.reportHeader || t('repDash.printDefaultHeader'));
     const footer = escapeHtml(printBrandingSettings.reportFooter || '');
     const primaryColor = printBrandingSettings.primaryColor || '#4F46E5';
     const logo = printBrandingSettings.logoDataUrl
       ? `<img src="${printBrandingSettings.logoDataUrl}" alt="logo" style="height:44px;max-width:140px;object-fit:contain;" />`
       : '';
-    const printDate = new Date().toLocaleString('ar-EG');
+    const printDate = new Date().toLocaleString(dateLocale);
     const signatureName = escapeHtml(printBrandingSettings.signatureName || '');
     const signatureTitle = escapeHtml(printBrandingSettings.signatureTitle || '');
+    const approvalStatus = isPayrollApproved(currentMonthKey) ? t('finance.payrollApproved') : t('finance.payrollNotApproved');
     const rows = filteredRepsFinance
       .map((r) => `
         <tr>
@@ -1457,19 +1458,19 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
           <td>${r.attendanceDays}</td>
           <td>${r.lateAttendanceDays}</td>
           <td>${r.callsCount}/${r.callsTarget}</td>
-          <td>${r.avgResponseMins} دقيقة</td>
+          <td>${r.avgResponseMins} ${escapeHtml(t('finance.minutesShort'))}</td>
           <td>${r.overdueFollowUps}</td>
-          <td>${r.penalties.totalPenalty.toLocaleString()} ج.م</td>
-          <td>${r.baseSalary.toLocaleString()} ج.م</td>
-          <td>${r.netSalary.toLocaleString()} ج.م</td>
+          <td>${r.penalties.totalPenalty.toLocaleString(dateLocale)} ${escapeHtml(currency)}</td>
+          <td>${r.baseSalary.toLocaleString(dateLocale)} ${escapeHtml(currency)}</td>
+          <td>${r.netSalary.toLocaleString(dateLocale)} ${escapeHtml(currency)}</td>
         </tr>
       `)
       .join('');
     const html = `
-      <html dir="rtl">
+      <html dir="${dir}">
       <head>
         <meta charset="utf-8" />
-        <title>كشف المرتبات - ${currentMonthKey}</title>
+        <title>${escapeHtml(t('finance.payrollPrintTitle', { month: currentMonthKey }))}</title>
         <style>
           :root { --primary-color: ${primaryColor}; }
           body { font-family: Arial, sans-serif; padding: 20px; color: #111; }
@@ -1495,19 +1496,19 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
           </div>
           ${logo}
         </div>
-        ${printBrandingSettings.showPrintDate ? `<p style="margin:0 0 10px;color:#666;font-size:12px;">تاريخ الطباعة: ${escapeHtml(printDate)}</p>` : ''}
-        <h2>كشف المرتبات - ${currentMonthKey}</h2>
-        <p>حالة الاعتماد: ${isPayrollApproved(currentMonthKey) ? 'معتمد' : 'غير معتمد'} | عدد الصفوف: ${filteredRepsFinance.length}</p>
+        ${printBrandingSettings.showPrintDate ? `<p style="margin:0 0 10px;color:#666;font-size:12px;">${escapeHtml(t('finance.payrollPrintDate', { date: printDate }))}</p>` : ''}
+        <h2>${escapeHtml(t('finance.payrollPrintTitle', { month: currentMonthKey }))}</h2>
+        <p>${escapeHtml(t('finance.payrollPrintApprovalStatus', { status: approvalStatus, count: filteredRepsFinance.length }))}</p>
         <div class="cards">
-          <div class="card">إجمالي الأساسي<b>${repsPayrollSummary.totalBase.toLocaleString()} ج.م</b></div>
-          <div class="card">إجمالي الصافي<b>${repsPayrollSummary.totalNet.toLocaleString()} ج.م</b></div>
-          <div class="card">إجمالي الخصومات<b>${repsPayrollSummary.totalPenalties.toLocaleString()} ج.م</b></div>
-          <div class="card">مندوبين يحتاجوا متابعة<b>${repsPayrollSummary.repsNeedAttention}</b></div>
+          <div class="card">${escapeHtml(t('finance.payrollPrintCardBase'))}<b>${repsPayrollSummary.totalBase.toLocaleString(dateLocale)} ${escapeHtml(currency)}</b></div>
+          <div class="card">${escapeHtml(t('finance.payrollPrintCardNet'))}<b>${repsPayrollSummary.totalNet.toLocaleString(dateLocale)} ${escapeHtml(currency)}</b></div>
+          <div class="card">${escapeHtml(t('finance.payrollPrintCardPenalties'))}<b>${repsPayrollSummary.totalPenalties.toLocaleString(dateLocale)} ${escapeHtml(currency)}</b></div>
+          <div class="card">${escapeHtml(t('finance.payrollPrintCardAttention'))}<b>${repsPayrollSummary.repsNeedAttention}</b></div>
         </div>
         <table>
           <thead>
             <tr>
-              <th>المندوب</th><th>حضور</th><th>تأخير</th><th>المكالمات</th><th>متوسط الرد</th><th>متابعات متأخرة</th><th>الخصومات</th><th>الأساسي</th><th>الصافي</th>
+              <th>${escapeHtml(t('finance.payrollPrintColRep'))}</th><th>${escapeHtml(t('finance.payrollPrintColAttendance'))}</th><th>${escapeHtml(t('finance.payrollPrintColLate'))}</th><th>${escapeHtml(t('finance.payrollPrintColCalls'))}</th><th>${escapeHtml(t('finance.payrollPrintColAvgResponse'))}</th><th>${escapeHtml(t('finance.payrollPrintColOverdue'))}</th><th>${escapeHtml(t('finance.payrollPrintColPenalties'))}</th><th>${escapeHtml(t('finance.payrollPrintColBase'))}</th><th>${escapeHtml(t('finance.payrollPrintColNet'))}</th>
             </tr>
           </thead>
           <tbody>${rows}</tbody>
@@ -1541,50 +1542,50 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
           <div className="bg-white/[0.04] border border-white/10 rounded-3xl p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="font-black text-lg">طلبات قادمة من المحاسب</h4>
+              <h4 className="font-black text-lg">{t('ownerApprovalsPanel.fromAccountantTitle')}</h4>
               <span className="text-xs text-zinc-400">
-                {pendingPayrollRequestsForOwner.length + pendingCustodyFromAccountant.length + pendingExpensesFromAccountant.length} طلب
+                {t('ownerApprovalsPanel.requestCount', { count: pendingPayrollRequestsForOwner.length + pendingCustodyFromAccountant.length + pendingExpensesFromAccountant.length })}
               </span>
             </div>
             <div className="space-y-3">
               {pendingPayrollRequestsForOwner.map((req) => (
                 <div key={req.id} className="bg-[#0F1528]/70 border border-white/10 rounded-xl p-3">
-                  <p className="font-bold text-white">طلب اعتماد كشف مرتبات — {req.monthKey}</p>
+                  <p className="font-bold text-white">{t('ownerApprovalsPanel.payrollApprovalRequest', { month: req.monthKey })}</p>
                   <p className="text-xs text-zinc-300 mt-1">
-                    إجمالي مطالبات مرفقة: {req.claimsSummary.totalEstimatedAmount.toLocaleString()} ج.م
+                    {t('ownerApprovalsPanel.claimsTotal', { amount: req.claimsSummary.totalEstimatedAmount.toLocaleString(dateLocale), currency })}
                   </p>
                   <div className="flex gap-2 mt-2">
                     <button
                       onClick={async () => {
                         const ok = await ownerApprovePayrollRequest(req.id);
-                        if (!ok) { toast.error('تعذر اعتماد الطلب'); return; }
-                        toast.success('تم اعتماد طلب كشف المرتبات');
+                        if (!ok) { toast.error(t('finance.toastPayrollApproveFailed')); return; }
+                        toast.success(t('finance.toastPayrollApproveSuccess'));
                       }}
                       className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black"
                     >
-                      اعتماد
+                      {t('common.approve')}
                     </button>
                     <button
                       onClick={async () => {
-                        const reason = window.prompt('سبب الرفض (اختياري):') || undefined;
+                        const reason = window.prompt(t('finance.rejectReasonOptional')) || undefined;
                         const ok = await ownerRejectPayrollRequest(req.id, reason);
-                        if (!ok) { toast.error('تعذر رفض الطلب'); return; }
-                        toast.info('تم رفض طلب كشف المرتبات');
+                        if (!ok) { toast.error(t('finance.toastPayrollRejectFailed')); return; }
+                        toast.info(t('finance.toastPayrollRejectSuccess'));
                       }}
                       className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black"
                     >
-                      رفض
+                      {t('common.reject')}
                     </button>
                   </div>
                 </div>
               ))}
               {pendingCustodyFromAccountant.map((c) => (
                 <div key={c.id} className="bg-[#0F1528]/70 border border-white/10 rounded-xl p-3">
-                  <p className="font-bold text-white">طلب عهدة من المحاسب: {c.title}</p>
-                  <p className="text-xs text-zinc-400 mt-1">{c.totalAmount.toLocaleString()} ج.م — موجّه إلى {c.productionManagerName}</p>
+                  <p className="font-bold text-white">{t('ownerApprovalsPanel.custodyFromAccountant', { title: c.title })}</p>
+                  <p className="text-xs text-zinc-400 mt-1">{t('ownerApprovalsPanel.directedTo', { amount: c.totalAmount.toLocaleString(dateLocale), currency, manager: c.productionManagerName })}</p>
                   <div className="flex gap-2 mt-2">
-                    <button onClick={async () => { const ok = await ownerApproveCustodyRequest(c.id); if (!ok) { toast.error('تعذر الاعتماد'); return; } toast.success('تم اعتماد طلب العهدة'); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">اعتماد</button>
-                    <button onClick={async () => { const ok = await ownerRejectCustodyRequest(c.id, window.prompt('سبب الرفض (اختياري):') || undefined); if (!ok) { toast.error('تعذر الرفض'); return; } toast.info('تم رفض طلب العهدة'); }} className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black">رفض</button>
+                    <button onClick={async () => { const ok = await ownerApproveCustodyRequest(c.id); if (!ok) { toast.error(t('finance.toastApproveFailed')); return; } toast.success(t('ownerApprovalsPanel.toastCustodyApproved')); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">{t('common.approve')}</button>
+                    <button onClick={async () => { const ok = await ownerRejectCustodyRequest(c.id, window.prompt(t('finance.rejectReasonOptional')) || undefined); if (!ok) { toast.error(t('finance.toastRejectFailed')); return; } toast.info(t('ownerApprovalsPanel.toastCustodyRejected')); }} className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black">{t('common.reject')}</button>
                   </div>
                 </div>
               ))}
@@ -1592,40 +1593,40 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                 const submitter = expenseSubmitterDisplay(e, users);
                 return (
                 <div key={e.id} className="bg-[#0F1528]/70 border border-white/10 rounded-xl p-3">
-                  <p className="font-bold text-white">طلب مصروف من المحاسب: {e.title}</p>
-                  <p className="text-xs text-zinc-400 mt-1">{(e.totalAmount ?? e.amount).toLocaleString()} ج.م</p>
+                  <p className="font-bold text-white">{t('ownerApprovalsPanel.expenseFromAccountant', { title: e.title })}</p>
+                  <p className="text-xs text-zinc-400 mt-1">{(e.totalAmount ?? e.amount).toLocaleString(dateLocale)} {currency}</p>
                   {submitter ? (
-                    <p className="text-[11px] text-zinc-500 mt-1">مقدّم الطلب: {submitter}</p>
+                    <p className="text-[11px] text-zinc-500 mt-1">{t('ownerApprovalsPanel.submittedBy', { name: submitter })}</p>
                   ) : null}
                   <div className="flex gap-2 mt-2">
-                    <button onClick={async () => { const ok = await approveExpense(e.id); if (!ok) { toast.error('تعذر اعتماد المصروف'); return; } toast.success('تم اعتماد المصروف'); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">اعتماد</button>
-                    <button onClick={async () => { const ok = await rejectExpense(e.id); if (!ok) { toast.error('تعذر رفض المصروف'); return; } toast.info('تم رفض المصروف'); }} className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black">رفض</button>
+                    <button onClick={async () => { const ok = await approveExpense(e.id); if (!ok) { toast.error(t('ownerApprovalsPanel.toastExpenseApproveFailed')); return; } toast.success(t('ownerApprovalsPanel.toastExpenseApprovedShort')); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">{t('common.approve')}</button>
+                    <button onClick={async () => { const ok = await rejectExpense(e.id); if (!ok) { toast.error(t('ownerApprovalsPanel.toastExpenseRejectFailed')); return; } toast.info(t('ownerApprovalsPanel.toastExpenseRejectedShort')); }} className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black">{t('common.reject')}</button>
                   </div>
                 </div>
                 );
               })}
               {pendingPayrollRequestsForOwner.length === 0 && pendingCustodyFromAccountant.length === 0 && pendingExpensesFromAccountant.length === 0 && (
-                <p className="text-xs text-zinc-500">لا توجد طلبات اعتماد حالياً من المحاسب.</p>
+                <p className="text-xs text-zinc-500">{t('ownerApprovalsPanel.noRequestsFromAccountant')}</p>
               )}
             </div>
           </div>
 
           <div className="bg-white/[0.04] border border-white/10 rounded-3xl p-5 space-y-4">
             <div className="flex items-center justify-between">
-              <h4 className="font-black text-lg">طلبات قادمة من مدير الإنتاج</h4>
+              <h4 className="font-black text-lg">{t('ownerApprovalsPanel.fromProductionTitle')}</h4>
               <span className="text-xs text-zinc-400">
-                {pendingCustodyFromProduction.length + pendingExpensesFromProduction.length} طلب
+                {t('ownerApprovalsPanel.requestCount', { count: pendingCustodyFromProduction.length + pendingExpensesFromProduction.length })}
               </span>
             </div>
             <div className="space-y-3">
               {pendingCustodyFromProduction.map((c) => (
                 <div key={c.id} className="bg-[#0F1528]/70 border border-white/10 rounded-xl p-3">
-                  <p className="font-bold text-white">طلب عهدة: {c.title}</p>
-                  <p className="text-xs text-zinc-400 mt-1">{c.totalAmount.toLocaleString()} ج.م — {c.productionManagerName}</p>
+                  <p className="font-bold text-white">{t('ownerApprovalsPanel.custodyRequest', { title: c.title })}</p>
+                  <p className="text-xs text-zinc-400 mt-1">{c.totalAmount.toLocaleString(dateLocale)} {currency} — {c.productionManagerName}</p>
                   <p className="text-[11px] text-zinc-500 mt-1 line-clamp-2">{c.description || '—'}</p>
                   <div className="flex gap-2 mt-2">
-                    <button onClick={async () => { const ok = await ownerApproveCustodyRequest(c.id); if (!ok) { toast.error('تعذر الاعتماد'); return; } toast.success('تم اعتماد طلب العهدة'); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">اعتماد</button>
-                    <button onClick={async () => { const ok = await ownerRejectCustodyRequest(c.id, window.prompt('سبب الرفض (اختياري):') || undefined); if (!ok) { toast.error('تعذر الرفض'); return; } toast.info('تم رفض طلب العهدة'); }} className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black">رفض</button>
+                    <button onClick={async () => { const ok = await ownerApproveCustodyRequest(c.id); if (!ok) { toast.error(t('finance.toastApproveFailed')); return; } toast.success(t('ownerApprovalsPanel.toastCustodyApproved')); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">{t('common.approve')}</button>
+                    <button onClick={async () => { const ok = await ownerRejectCustodyRequest(c.id, window.prompt(t('finance.rejectReasonOptional')) || undefined); if (!ok) { toast.error(t('finance.toastRejectFailed')); return; } toast.info(t('ownerApprovalsPanel.toastCustodyRejected')); }} className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black">{t('common.reject')}</button>
                   </div>
                 </div>
               ))}
@@ -1633,20 +1634,20 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                 const submitter = expenseSubmitterDisplay(e, users);
                 return (
                 <div key={e.id} className="bg-[#0F1528]/70 border border-white/10 rounded-xl p-3">
-                  <p className="font-bold text-white">طلب مصروف إنتاج: {e.title}</p>
-                  <p className="text-xs text-zinc-400 mt-1">{(e.totalAmount ?? e.amount).toLocaleString()} ج.م — {e.costCenter}</p>
+                  <p className="font-bold text-white">{t('ownerApprovalsPanel.productionExpenseRequest', { title: e.title })}</p>
+                  <p className="text-xs text-zinc-400 mt-1">{(e.totalAmount ?? e.amount).toLocaleString(dateLocale)} {currency} — {e.costCenter}</p>
                   {submitter ? (
-                    <p className="text-[11px] text-teal-300/90 mt-1 font-bold">مقدّم الطلب: {submitter}</p>
+                    <p className="text-[11px] text-teal-300/90 mt-1 font-bold">{t('ownerApprovalsPanel.submittedBy', { name: submitter })}</p>
                   ) : null}
                   <div className="flex gap-2 mt-2">
-                    <button onClick={async () => { const ok = await approveExpense(e.id); if (!ok) { toast.error('تعذر اعتماد المصروف'); return; } toast.success('تم اعتماد المصروف'); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">اعتماد</button>
-                    <button onClick={async () => { const ok = await rejectExpense(e.id); if (!ok) { toast.error('تعذر رفض المصروف'); return; } toast.info('تم رفض المصروف'); }} className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black">رفض</button>
+                    <button onClick={async () => { const ok = await approveExpense(e.id); if (!ok) { toast.error(t('ownerApprovalsPanel.toastExpenseApproveFailed')); return; } toast.success(t('ownerApprovalsPanel.toastExpenseApprovedShort')); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">{t('common.approve')}</button>
+                    <button onClick={async () => { const ok = await rejectExpense(e.id); if (!ok) { toast.error(t('ownerApprovalsPanel.toastExpenseRejectFailed')); return; } toast.info(t('ownerApprovalsPanel.toastExpenseRejectedShort')); }} className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black">{t('common.reject')}</button>
                   </div>
                 </div>
                 );
               })}
               {pendingCustodyFromProduction.length === 0 && pendingExpensesFromProduction.length === 0 && (
-                <p className="text-xs text-zinc-500">لا توجد طلبات اعتماد حالياً من مدير الإنتاج.</p>
+                <p className="text-xs text-zinc-500">{t('ownerApprovalsPanel.noRequestsFromProduction')}</p>
               )}
             </div>
           </div>
@@ -1661,29 +1662,29 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6">
         <div className="bg-slate-900/40 border border-slate-800 p-6 rounded-[2.5rem]">
-          <p className="text-slate-500 font-bold text-[10px] uppercase mb-1 tracking-widest">إيراد محصل</p>
-          <p className="text-2xl font-black text-emerald-500">{stats.receivablePaid.toLocaleString()} ج.م</p>
-          <p className="text-[11px] text-zinc-500 mt-2">{invoices.filter(i => i.status === 'مدفوع').length} فاتورة مدفوعة</p>
+          <p className="text-slate-500 font-bold text-[10px] uppercase mb-1 tracking-widest">{t('finance.statCollected')}</p>
+          <p className="text-2xl font-black text-emerald-500">{stats.receivablePaid.toLocaleString(dateLocale)} {currency}</p>
+          <p className="text-[11px] text-zinc-500 mt-2">{t('finance.statCollectedHint', { count: invoices.filter(i => i.status === 'مدفوع').length })}</p>
         </div>
         <div className="bg-slate-900/40 border border-slate-800 p-6 rounded-[2.5rem]">
-          <p className="text-slate-500 font-bold text-[10px] uppercase mb-1 tracking-widest">ذمم مدينة منتظرة</p>
-          <p className="text-2xl font-black text-amber-500">{stats.receivablePending.toLocaleString()} ج.م</p>
-          <p className="text-[11px] text-zinc-500 mt-2">{invoices.filter(i => i.status === 'قيد الانتظار').length} فاتورة معلقة</p>
+          <p className="text-slate-500 font-bold text-[10px] uppercase mb-1 tracking-widest">{t('finance.statReceivablePending')}</p>
+          <p className="text-2xl font-black text-amber-500">{stats.receivablePending.toLocaleString(dateLocale)} {currency}</p>
+          <p className="text-[11px] text-zinc-500 mt-2">{t('finance.statReceivablePendingHint', { count: invoices.filter(i => i.status === 'قيد الانتظار').length })}</p>
         </div>
         <div className="bg-slate-900/40 border border-slate-800 p-6 rounded-[2.5rem]">
-          <p className="text-slate-500 font-bold text-[10px] uppercase mb-1 tracking-widest">مصروفات مدفوعة</p>
-          <p className="text-2xl font-black text-rose-400">{stats.expensesPaid.toLocaleString()} ج.م</p>
-          <p className="text-[11px] text-zinc-500 mt-2">{expenses.filter(e => e.status === 'مدفوع').length} حركة دفع</p>
+          <p className="text-slate-500 font-bold text-[10px] uppercase mb-1 tracking-widest">{t('finance.statExpensesPaid')}</p>
+          <p className="text-2xl font-black text-rose-400">{stats.expensesPaid.toLocaleString(dateLocale)} {currency}</p>
+          <p className="text-[11px] text-zinc-500 mt-2">{t('finance.statExpensesPaidHint', { count: expenses.filter(e => e.status === 'مدفوع').length })}</p>
         </div>
         <div className="bg-slate-900/40 border border-slate-800 p-6 rounded-[2.5rem]">
-          <p className="text-slate-500 font-bold text-[10px] uppercase mb-1 tracking-widest">مصروفات منتظرة</p>
-          <p className="text-2xl font-black text-amber-400">{stats.expensesPending.toLocaleString()} ج.م</p>
-          <p className="text-[11px] text-zinc-500 mt-2">{expenses.filter(e => e.approvalStatus === 'قيد الاعتماد').length} تحتاج اعتماد</p>
+          <p className="text-slate-500 font-bold text-[10px] uppercase mb-1 tracking-widest">{t('finance.statExpensesPending')}</p>
+          <p className="text-2xl font-black text-amber-400">{stats.expensesPending.toLocaleString(dateLocale)} {currency}</p>
+          <p className="text-[11px] text-zinc-500 mt-2">{t('finance.statExpensesPendingHint', { count: expenses.filter(e => e.approvalStatus === 'قيد الاعتماد').length })}</p>
         </div>
         <div className="bg-slate-900/40 border border-slate-800 p-6 rounded-[2.5rem]">
-          <p className="text-slate-500 font-bold text-[10px] uppercase mb-1 tracking-widest">صافي الخزينة</p>
-          <p className={`text-2xl font-black ${stats.netCash >= 0 ? 'text-emerald-500' : 'text-rose-400'}`}>{stats.netCash.toLocaleString()} ج.م</p>
-          <p className="text-[11px] text-zinc-500 mt-2">بعد خصم كل المدفوعات</p>
+          <p className="text-slate-500 font-bold text-[10px] uppercase mb-1 tracking-widest">{t('finance.statNetCash')}</p>
+          <p className={`text-2xl font-black ${stats.netCash >= 0 ? 'text-emerald-500' : 'text-rose-400'}`}>{stats.netCash.toLocaleString(dateLocale)} {currency}</p>
+          <p className="text-[11px] text-zinc-500 mt-2">{t('finance.statNetCashHint')}</p>
         </div>
       </div>
 
@@ -1716,10 +1717,10 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             onClick={async () => {
               const ok = await closeMonth(currentMonthKey);
               if (!ok) {
-                toast.error('تعذر تقفيل الشهر');
+                toast.error(t('finance.toastMonthCloseFailed'));
                 return;
               }
-              toast.success('تم تقفيل الشهر الحالي');
+              toast.success(t('finance.toastMonthClosed'));
             }}
             className="px-3 py-1.5 rounded-xl text-xs font-black bg-rose-500 text-white"
           >
@@ -1731,10 +1732,10 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             onClick={async () => {
               const ok = await reopenMonth(currentMonthKey);
               if (!ok) {
-                toast.error('تعذر إعادة فتح الشهر');
+                toast.error(t('finance.toastMonthReopenFailed'));
                 return;
               }
-              toast.success('تم إعادة فتح الشهر الحالي');
+              toast.success(t('finance.toastMonthReopened'));
             }}
             className="px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-500 text-slate-950"
           >
@@ -1753,14 +1754,14 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
               });
               const ok = await closeFiscalYear(currentYear, normalized);
               if (!ok) {
-                toast.error('تعذر تقفيل السنة المالية');
+                toast.error(t('finance.toastFiscalYearCloseFailed'));
                 return;
               }
-              toast.success(`تم تقفيل سنة ${currentYear} وترحيل أرصدة افتتاحية`);
+              toast.success(t('finance.toastFiscalYearClosed', { year: currentYear }));
             }}
             className="px-3 py-1.5 rounded-xl text-xs font-black bg-rose-500 text-white"
           >
-            تقفيل السنة
+            {t('finance.closeYear')}
           </button>
         )}
         {canCloseMonths && closedFiscalYears.includes(currentYear) && (
@@ -1768,47 +1769,47 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             onClick={async () => {
               const ok = await reopenFiscalYear(currentYear);
               if (!ok) {
-                toast.error('تعذر إعادة فتح السنة المالية');
+                toast.error(t('finance.toastFiscalYearReopenFailed'));
                 return;
               }
-              toast.success(`تم فتح سنة ${currentYear}`);
+              toast.success(t('finance.toastFiscalYearReopened', { year: currentYear }));
             }}
             className="px-3 py-1.5 rounded-xl text-xs font-black bg-emerald-500 text-slate-950"
           >
-            إعادة فتح السنة
+            {t('finance.reopenYear')}
           </button>
         )}
-        <span className="text-xs text-zinc-400">أرصدة افتتاحية {String(Number(currentYear) + 1)}: {getOpeningBalances(String(Number(currentYear) + 1)).length}</span>
+        <span className="text-xs text-zinc-400">{t('finance.openingBalancesCount', { year: String(Number(currentYear) + 1), count: getOpeningBalances(String(Number(currentYear) + 1)).length })}</span>
       </div>
       <div className="bg-slate-900/40 border border-slate-800 rounded-[2rem] p-4 space-y-3">
-        <p className="text-sm text-zinc-200 font-black">فتح شهر مقفل بطلب اعتماد</p>
+        <p className="text-sm text-zinc-200 font-black">{t('finance.reopenRequestTitle')}</p>
         {canRequestMonthReopen && (
           <div className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-2">
             <input
               value={reopenMonthReason}
               onChange={(e) => setReopenMonthReason(e.target.value)}
-              placeholder="سبب إعادة الفتح (إلزامي)"
+              placeholder={t('finance.reopenReasonPlaceholder')}
               className="bg-[#0B1020] border border-white/10 rounded-xl px-3 py-2 text-xs"
             />
             <button
               onClick={async () => {
                 const ok = await requestMonthReopen(currentMonthKey, reopenMonthReason);
                 if (!ok) {
-                  toast.error('تعذر إرسال الطلب: تحقق أن الشهر مقفل ولا يوجد طلب معلق');
+                  toast.error(t('finance.toastMonthReopenSendFailed'));
                   return;
                 }
-                toast.success('تم إرسال طلب إعادة الفتح لاعتماد المالك');
+                toast.success(t('finance.toastMonthReopenSent'));
                 setReopenMonthReason('');
               }}
               className="px-3 py-2 rounded-xl text-xs font-black bg-indigo-500 text-white"
             >
-              إرسال طلب إعادة فتح
+              {t('finance.sendReopenRequest')}
             </button>
           </div>
         )}
         {currentUser?.role === 'مالك' && (
           <div className="space-y-2">
-            <p className="text-xs text-zinc-400">طلبات بانتظارك: {pendingMonthReopenRequests.length}</p>
+            <p className="text-xs text-zinc-400">{t('finance.pendingForYou', { count: pendingMonthReopenRequests.length })}</p>
             {pendingMonthReopenRequests.slice(0, 6).map((req) => (
               <div key={req.id} className="bg-[#0B1020] border border-white/10 rounded-xl p-3 flex flex-wrap items-center gap-2 text-xs">
                 <span className="text-white font-bold">{req.monthKey}</span>
@@ -1819,28 +1820,28 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                     onClick={async () => {
                       const ok = await ownerApproveMonthReopenRequest(req.id);
                       if (!ok) {
-                        toast.error('تعذر الاعتماد');
+                        toast.error(t('finance.toastApproveFailed'));
                         return;
                       }
-                      toast.success(`تم اعتماد فتح ${req.monthKey}`);
+                      toast.success(t('finance.toastMonthReopenApproved', { monthKey: req.monthKey }));
                     }}
                     className="px-2 py-1 rounded-lg bg-emerald-500 text-slate-950 font-black"
                   >
-                    اعتماد
+                    {t('common.approve')}
                   </button>
                   <button
                     onClick={async () => {
-                      const reason = window.prompt('سبب الرفض (اختياري)') || '';
+                      const reason = window.prompt(t('finance.rejectReasonOptionalShort')) || '';
                       const ok = await ownerRejectMonthReopenRequest(req.id, reason);
                       if (!ok) {
-                        toast.error('تعذر الرفض');
+                        toast.error(t('finance.toastRejectFailed'));
                         return;
                       }
-                      toast.info('تم رفض الطلب');
+                      toast.info(t('finance.toastRequestRejected'));
                     }}
                     className="px-2 py-1 rounded-lg bg-rose-500 text-white font-black"
                   >
-                    رفض
+                    {t('common.reject')}
                   </button>
                 </div>
               </div>
@@ -1852,13 +1853,12 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
 
       {activeFinanceTab === 'invoices' && (
         <div className="bg-indigo-500/10 border border-indigo-500/25 rounded-2xl p-4 text-sm text-zinc-200">
-          <p className="font-black text-white mb-1">عروض أسعار المبيعات والتسجيل المحاسبي</p>
+          <p className="font-black text-white mb-1">{t('finance.quotesNoticeTitle')}</p>
           <p className="text-xs text-zinc-400 leading-relaxed">
-            عروض الأسعار التي يرسلها المندوب أو المبيعات <span className="text-amber-300 font-bold">لا تظهر هنا</span> إلا بعد اعتماد المالك؛ عندها تُنشأ فاتورة بمصدر «عرض سعر معتمد».
-            الفواتير التي يُدخلها المحاسب يدوياً تُسجَّل كـ «يدوي محاسب».
+            {t('finance.quotesNoticeBody')}
             {priceQuotes.filter(q => q.status === 'قيد اعتماد المالك').length > 0 && (
               <span className="block mt-2 text-amber-200/90">
-                يوجد {priceQuotes.filter(q => q.status === 'قيد اعتماد المالك').length} عرض سعر بانتظار اعتماد المالك في مركز الاعتمادات.
+                {t('finance.quotesPendingOwner', { count: priceQuotes.filter(q => q.status === 'قيد اعتماد المالك').length })}
               </span>
             )}
           </p>
@@ -1959,7 +1959,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       <td className="p-6 text-xs text-zinc-300">{inv.nextDueDate ? new Date(inv.nextDueDate).toLocaleDateString(dateLocale) : '—'}</td>
                       <td className="p-6 text-xs text-zinc-300">{inv.costCenter || t('finance.generalCostCenter')}</td>
                       <td className="p-6 text-xs text-slate-500 font-bold">{new Date(inv.date).toLocaleDateString(dateLocale)}</td>
-                      <td className="p-6"><span className={`px-4 py-1.5 rounded-xl text-[9px] font-black inline-flex items-center gap-2 ${inv.status === 'مدفوع' ? 'bg-emerald-500/10 text-emerald-500' : inv.status === 'متأخر' ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}>{inv.status}</span></td>
+                      <td className="p-6"><span className={`px-4 py-1.5 rounded-xl text-[9px] font-black inline-flex items-center gap-2 ${inv.status === 'مدفوع' ? 'bg-emerald-500/10 text-emerald-500' : inv.status === 'متأخر' ? 'bg-rose-500/10 text-rose-500' : 'bg-amber-500/10 text-amber-500'}`}>{getInvoiceStatusLabel(inv.status, t)}</span></td>
                       <td className="p-6">
                         <div className="flex items-center gap-2">
                           <button
@@ -1976,14 +1976,14 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                               const nextStatus = cycleInvoiceStatus(inv.status);
                               const updated = await updateInvoiceStatus(inv.id, nextStatus);
                               if (!updated) {
-                                toast.error('لا يمكن تعديل فاتورة ضمن شهر مقفل');
+                                toast.error(t('finance.toastInvoiceLockedMonth'));
                                 return;
                               }
-                              toast.success(`تم تحديث الحالة إلى: ${nextStatus}`);
+                              toast.success(t('finance.toastInvoiceStatusUpdated', { status: getInvoiceStatusLabel(nextStatus, t) }));
                               })();
                             }}
-                            data-tooltip="تغيير حالة الفاتورة"
-                            aria-label="تغيير حالة الفاتورة"
+                            data-tooltip={t('finance.changeInvoiceStatusTooltip')}
+                            aria-label={t('finance.changeInvoiceStatusTooltip')}
                             className="icon-tooltip p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-400 hover:text-white border border-slate-700/50"
                           >
                             <MoreVertical className="w-4 h-4" />
@@ -1993,33 +1993,33 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                               void (async () => {
                               const remaining = inv.remainingAmount ?? Math.max(0, (inv.totalAmount ?? inv.amount) - (inv.paidAmount ?? 0));
                               if (remaining <= 0) {
-                                toast.info('الفاتورة مسددة بالكامل');
+                                toast.info(t('finance.toastInvoiceFullyPaid'));
                                 return;
                               }
-                              const amountInput = window.prompt(`أدخل قيمة الدفعة (المتبقي ${remaining.toLocaleString()} ج.م)`, String(remaining));
+                              const amountInput = window.prompt(t('finance.collectionAmountPrompt', { remaining: remaining.toLocaleString(dateLocale), currency }), String(remaining));
                               if (!amountInput) return;
                               const amount = Number(amountInput);
                               if (!Number.isFinite(amount) || amount <= 0) {
-                                toast.error('قيمة غير صحيحة');
+                                toast.error(t('finance.toastInvalidAmount'));
                                 return;
                               }
-                              const methodInput = window.prompt('طريقة التحصيل: اكتب "كاش" أو "تحويل"', 'تحويل');
+                              const methodInput = window.prompt(t('finance.collectionMethodPrompt'), 'تحويل');
                               const method = methodInput === 'كاش' ? 'كاش' : 'تحويل';
-                              const nextDueDate = window.prompt('موعد القسط القادم (YYYY-MM-DD) - اتركه فارغ لو لا يوجد متبقي', inv.nextDueDate ? inv.nextDueDate.slice(0, 10) : '');
+                              const nextDueDate = window.prompt(t('finance.nextInstallmentPrompt'), inv.nextDueDate ? inv.nextDueDate.slice(0, 10) : '');
                               const ok = await recordInvoiceCollection(inv.id, {
                                 amount,
                                 method,
                                 nextDueDate: nextDueDate?.trim() || undefined
                               });
                               if (!ok) {
-                                toast.error('تعذر تسجيل الدفعة (تحقق من صلاحياتك أو إقفالات الفترة)');
+                                toast.error(t('finance.toastCollectionFailed'));
                                 return;
                               }
-                              toast.success('تم تسجيل الدفعة وإنشاء قيد التحصيل تلقائيًا');
+                              toast.success(t('finance.toastCollectionSaved'));
                               })();
                             }}
-                            data-tooltip="تسجيل دفعة تحصيل"
-                            aria-label="تسجيل دفعة تحصيل"
+                            data-tooltip={t('finance.recordCollectionTooltip')}
+                            aria-label={t('finance.recordCollectionTooltip')}
                             className="icon-tooltip p-2.5 bg-emerald-600/25 hover:bg-emerald-600/35 rounded-xl text-emerald-200 hover:text-white border border-emerald-500/30"
                           >
                             <Banknote className="w-4 h-4" />
@@ -2044,43 +2044,43 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                   <input
                     value={expenseCodeFilter}
                     onChange={(e) => setExpenseCodeFilter(e.target.value)}
-                    placeholder="بحث بكود المصروف (EXP-HSP...)"
+                    placeholder={t('finance.expenseCodeSearchPh')}
                     className="bg-[#0F1528] border border-white/10 rounded-xl px-3 py-2 text-xs"
                   />
                   <input
                     value={expenseKeywordFilter}
                     onChange={(e) => setExpenseKeywordFilter(e.target.value)}
-                    placeholder="بحث نصي (مثال: شاي)"
+                    placeholder={t('finance.expenseKeywordSearchPh')}
                     className="bg-[#0F1528] border border-white/10 rounded-xl px-3 py-2 text-xs"
                   />
                   <button
                     onClick={() => { setExpenseCodeFilter(''); setExpenseKeywordFilter(''); }}
                     className="bg-[#0F1528] border border-white/10 rounded-xl px-3 py-2 text-xs font-black text-zinc-200"
                   >
-                    مسح الفلاتر
+                    {t('finance.clearFilters')}
                   </button>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <input
                     value={newExpenseViewName}
                     onChange={(e) => setNewExpenseViewName(e.target.value)}
-                    placeholder="اسم العرض المحفوظ"
+                    placeholder={t('finance.savedViewNamePh')}
                     className="bg-[#0F1528] border border-white/10 rounded-xl px-3 py-2 text-xs min-w-[170px]"
                   />
                   <button
                     onClick={() => {
                       const name = newExpenseViewName.trim();
-                      if (!name) { toast.error('اكتب اسم العرض أولًا'); return; }
+                      if (!name) { toast.error(t('finance.saveViewNameRequired')); return; }
                       setExpenseSavedViews(prev => [
                         ...prev,
                         { id: `view-${Date.now()}`, name, month: expenseMonthFilter, code: expenseCodeFilter, keyword: expenseKeywordFilter },
                       ]);
                       setNewExpenseViewName('');
-                      toast.success('تم حفظ العرض');
+                      toast.success(t('finance.viewSaved'));
                     }}
                     className="bg-[#0F1528] border border-white/10 rounded-xl px-3 py-2 text-xs font-black text-zinc-200"
                   >
-                    حفظ العرض الحالي
+                    {t('finance.saveCurrentView')}
                   </button>
                   {expenseSavedViews.map((view) => (
                     <div key={view.id} className="flex items-center gap-1">
@@ -2098,33 +2098,33 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                         onClick={() => setExpenseSavedViews(prev => prev.filter(v => v.id !== view.id))}
                         className="px-1.5 py-1 rounded-lg text-[10px] bg-rose-500/20 text-rose-300"
                       >
-                        حذف
+                        {t('common.delete')}
                       </button>
                     </div>
                   ))}
                 </div>
                 <div className="flex flex-wrap items-center gap-3 text-[11px]">
-                  <span className="px-2 py-1 rounded-lg bg-white/10 text-zinc-200">عدد الحركات: {filteredExpenseSummary.count}</span>
-                  <span className="px-2 py-1 rounded-lg bg-rose-500/15 text-rose-300">إجمالي: {filteredExpenseSummary.total.toLocaleString()} ج.م</span>
-                  <span className="px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-300">مدفوع: {filteredExpenseSummary.paid.toLocaleString()} ج.م</span>
-                  <span className="px-2 py-1 rounded-lg bg-amber-500/15 text-amber-300">قيد الانتظار: {filteredExpenseSummary.pending.toLocaleString()} ج.م</span>
+                  <span className="px-2 py-1 rounded-lg bg-white/10 text-zinc-200">{t('finance.movementCount', { count: filteredExpenseSummary.count })}</span>
+                  <span className="px-2 py-1 rounded-lg bg-rose-500/15 text-rose-300">{t('finance.expenseTotal', { amount: filteredExpenseSummary.total.toLocaleString(dateLocale), currency })}</span>
+                  <span className="px-2 py-1 rounded-lg bg-emerald-500/15 text-emerald-300">{t('finance.expensePaid', { amount: filteredExpenseSummary.paid.toLocaleString(dateLocale), currency })}</span>
+                  <span className="px-2 py-1 rounded-lg bg-amber-500/15 text-amber-300">{t('finance.expensePending', { amount: filteredExpenseSummary.pending.toLocaleString(dateLocale), currency })}</span>
                 </div>
               </div>
               <table className="w-full text-right border-collapse">
                 <thead>
                   <tr className="bg-slate-950/95">
-                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">رقم</th>
-                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">البند</th>
-                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">الفئة</th>
-                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">المبلغ الأساسي</th>
-                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">VAT</th>
-                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">الإجمالي</th>
-                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">مركز تكلفة</th>
-                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">مقدّم الطلب</th>
-                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">الاعتماد</th>
-                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">الحالة</th>
-                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">طريقة الدفع</th>
-                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">إجراءات</th>
+                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">{t('finance.colNumber')}</th>
+                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">{t('finance.colExpenseItem')}</th>
+                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">{t('finance.colCategory')}</th>
+                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">{t('finance.colBaseAmount')}</th>
+                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">{t('finance.colVat')}</th>
+                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">{t('finance.colTotal')}</th>
+                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">{t('finance.colCostCenter')}</th>
+                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">{t('finance.colSubmitter')}</th>
+                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">{t('finance.colApproval')}</th>
+                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">{t('finance.colStatus')}</th>
+                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">{t('finance.colPaymentMethod')}</th>
+                    <th className="sticky top-0 z-20 p-4 text-[10px] font-black text-slate-400 uppercase bg-slate-950/95 backdrop-blur">{t('finance.colActions')}</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-800/50">
@@ -2134,28 +2134,28 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       <td className="p-6">
                         <p className="font-bold">{exp.title}</p>
                         <p className="text-xs text-zinc-400">{exp.vendor || '-'}</p>
-                        <p className="text-[10px] text-[#A99FFF] mt-1">كود: {getExpenseCode(exp)}</p>
+                        <p className="text-[10px] text-[#A99FFF] mt-1">{t('finance.expenseCodeLabel', { code: getExpenseCode(exp) })}</p>
                       </td>
                       <td className="p-6">
-                        <p>{exp.category}</p>
+                        <p>{getExpenseCategoryLabel(exp.category, t)}</p>
                         <p className="text-[10px] text-zinc-500">{expenseCategoryCodeMap[exp.category] || 'EXP-OTH'}</p>
                       </td>
-                      <td className="p-6 font-black">{exp.amount.toLocaleString()} ج.م</td>
-                      <td className="p-6 text-indigo-300">{(exp.vatAmount ?? 0).toLocaleString()} ج.م</td>
-                      <td className="p-6 font-black text-rose-300">{(exp.totalAmount ?? exp.amount).toLocaleString()} ج.م</td>
-                      <td className="p-6 text-xs text-zinc-300">{exp.costCenter || 'عام'}</td>
+                      <td className="p-6 font-black">{exp.amount.toLocaleString(dateLocale)} {currency}</td>
+                      <td className="p-6 text-indigo-300">{(exp.vatAmount ?? 0).toLocaleString(dateLocale)} {currency}</td>
+                      <td className="p-6 font-black text-rose-300">{(exp.totalAmount ?? exp.amount).toLocaleString(dateLocale)} {currency}</td>
+                      <td className="p-6 text-xs text-zinc-300">{exp.costCenter || t('finance.generalCostCenter')}</td>
                       <td className="p-6 text-xs text-zinc-400">{expenseSubmitterDisplay(exp, users) || '—'}</td>
                       <td className="p-6">
                         <span className={`px-3 py-1 rounded-lg text-[10px] font-black ${exp.approvalStatus === 'معتمد' ? 'bg-emerald-500/15 text-emerald-300' : exp.approvalStatus === 'مرفوض' ? 'bg-rose-500/15 text-rose-300' : 'bg-amber-500/15 text-amber-300'}`}>
-                          {exp.approvalStatus}
+                          {getApprovalStatusLabel(exp.approvalStatus, t)}
                         </span>
                         {exp.approvedBy && <p className="text-[10px] text-zinc-500 mt-1">{exp.approvedBy}</p>}
                       </td>
-                      <td className="p-6"><span className={`px-4 py-1.5 rounded-xl text-[9px] font-black inline-flex items-center gap-2 ${exp.status === 'مدفوع' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'}`}>{exp.status}</span></td>
+                      <td className="p-6"><span className={`px-4 py-1.5 rounded-xl text-[9px] font-black inline-flex items-center gap-2 ${exp.status === 'مدفوع' ? 'bg-rose-500/10 text-rose-400' : 'bg-amber-500/10 text-amber-400'}`}>{getExpenseStatusLabel(exp.status, t)}</span></td>
                       <td className="p-6 text-xs text-zinc-300">
                         {exp.status === 'مدفوع' ? (
                           <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${exp.paymentMethod === 'كاش' ? 'bg-amber-500/20 text-amber-200' : exp.paymentMethod === 'بنك' ? 'bg-sky-500/20 text-sky-200' : 'bg-zinc-700/40 text-zinc-500'}`}>
-                            {exp.paymentMethod === 'كاش' || exp.paymentMethod === 'بنك' ? exp.paymentMethod : 'لم تُحدَّد'}
+                            {exp.paymentMethod === 'كاش' || exp.paymentMethod === 'بنك' ? getPaymentMethodLabel(exp.paymentMethod, t) : t('finance.paymentNotSet')}
                           </span>
                         ) : (
                           <span className="text-zinc-600">—</span>
@@ -2165,19 +2165,19 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                         <div className="flex items-center gap-2">
                           {canApproveExpenses && exp.approvalStatus === 'قيد الاعتماد' && (
                             <>
-                              <button onClick={() => { void (async () => { const ok = await approveExpense(exp.id); if (!ok) { toast.error('لا يمكن اعتماد المصروف في هذه الحالة'); return; } toast.success('تم اعتماد المصروف'); })(); }} className="px-3 py-1.5 rounded-lg text-xs font-black bg-emerald-500 text-slate-950">اعتماد</button>
-                              <button onClick={() => { void (async () => { const ok = await rejectExpense(exp.id); if (!ok) { toast.error('لا يمكن رفض المصروف في هذه الحالة'); return; } toast.success('تم رفض المصروف'); })(); }} className="px-3 py-1.5 rounded-lg text-xs font-black bg-rose-500 text-white">رفض</button>
+                              <button onClick={() => { void (async () => { const ok = await approveExpense(exp.id); if (!ok) { toast.error(t('finance.toastApproveExpenseFailed')); return; } toast.success(t('finance.toastExpenseApproved')); })(); }} className="px-3 py-1.5 rounded-lg text-xs font-black bg-emerald-500 text-slate-950">{t('common.approve')}</button>
+                              <button onClick={() => { void (async () => { const ok = await rejectExpense(exp.id); if (!ok) { toast.error(t('finance.toastRejectExpenseFailed')); return; } toast.success(t('finance.toastExpenseRejected')); })(); }} className="px-3 py-1.5 rounded-lg text-xs font-black bg-rose-500 text-white">{t('common.reject')}</button>
                             </>
                           )}
                           <button
-                            data-tooltip="تغيير حالة المصروف (عند التسجيل كمدفوع: كاش أو بنك)"
-                            aria-label="تغيير حالة المصروف"
+                            data-tooltip={t('finance.changeExpenseStatusTooltip')}
+                            aria-label={t('finance.changeExpenseStatusTooltip')}
                             onClick={() => {
                               void (async () => {
                                 const next = cycleExpenseStatus(exp.status);
                                 if (next === 'مدفوع') {
                                   if (exp.approvalStatus !== 'معتمد') {
-                                    toast.error('لازم اعتماد المصروف قبل الدفع أو الشهر مقفل');
+                                    toast.error(t('finance.toastExpenseApprovalRequired'));
                                     return;
                                   }
                                   setExpensePaymentPickId(exp.id);
@@ -2185,10 +2185,10 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                                 }
                                 const ok = await updateExpenseStatus(exp.id, next);
                                 if (!ok) {
-                                  toast.error('لا يمكن تعديل مصروف في شهر مقفل');
+                                  toast.error(t('finance.toastExpenseLockedMonth'));
                                   return;
                                 }
-                                toast.success(`تم تحديث الحالة إلى: ${next}`);
+                                toast.success(t('finance.toastExpenseStatusUpdated', { status: getExpenseStatusLabel(next, t) }));
                               })();
                             }}
                             className="icon-tooltip p-2.5 bg-slate-800 hover:bg-slate-700 rounded-xl text-slate-400 hover:text-white border border-slate-700/50"
@@ -2201,7 +2201,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                   ))}
                   {filteredExpenseRows.length === 0 && (
                     <tr>
-                      <td colSpan={12} className="p-6 text-center text-zinc-400 text-sm">لا توجد مصروفات مطابقة للفلاتر الحالية.</td>
+                      <td colSpan={12} className="p-6 text-center text-zinc-400 text-sm">{t('finance.noMatchingExpenses')}</td>
                     </tr>
                   )}
                 </tbody>
@@ -2217,8 +2217,8 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                   }}
                 >
                   <div className="bg-[#0F1528] border border-white/10 rounded-2xl p-6 max-w-sm w-full shadow-2xl space-y-4" onClick={(e) => e.stopPropagation()}>
-                    <h3 id="expense-pay-method-title" className="font-black text-lg text-white">تسجيل الدفع</h3>
-                    <p className="text-sm text-zinc-400">اختر طريقة الصرف لتظهر في الدفاتر والحركة المحاسبية.</p>
+                    <h3 id="expense-pay-method-title" className="font-black text-lg text-white">{t('finance.recordPaymentTitle')}</h3>
+                    <p className="text-sm text-zinc-400">{t('finance.recordPaymentHint')}</p>
                     <div className="flex flex-col gap-2">
                       <button
                         type="button"
@@ -2230,14 +2230,14 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                             const ok = await updateExpenseStatus(id, 'مدفوع', 'كاش');
                             setExpensePaymentPickId(null);
                             if (!ok) {
-                              toast.error('تعذر التحديث — تحقق من الاعتماد أو إغلاق الشهر أو إعداد قاعدة البيانات');
+                              toast.error(t('finance.toastExpensePayUpdateFailed'));
                               return;
                             }
-                            toast.success('تم تسجيل المصروف كمدفوع — كاش');
+                            toast.success(t('finance.toastExpensePaidCash'));
                           })();
                         }}
                       >
-                        كاش
+                        {getPaymentMethodLabel('كاش', t)}
                       </button>
                       <button
                         type="button"
@@ -2249,17 +2249,17 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                             const ok = await updateExpenseStatus(id, 'مدفوع', 'بنك');
                             setExpensePaymentPickId(null);
                             if (!ok) {
-                              toast.error('تعذر التحديث — تحقق من الاعتماد أو إغلاق الشهر أو إعداد قاعدة البيانات');
+                              toast.error(t('finance.toastExpensePayUpdateFailed'));
                               return;
                             }
-                            toast.success('تم تسجيل المصروف كمدفوع — بنك');
+                            toast.success(t('finance.toastExpensePaidBank'));
                           })();
                         }}
                       >
-                        بنك
+                        {getPaymentMethodLabel('بنك', t)}
                       </button>
                       <button type="button" className="w-full py-2 text-sm text-zinc-500 hover:text-zinc-300" onClick={() => setExpensePaymentPickId(null)}>
-                        إلغاء
+                        {t('common.cancel')}
                       </button>
                     </div>
                   </div>
@@ -2269,15 +2269,15 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             )}
             {activeFinanceTab === 'ledger' && (
               <table className="w-full text-right border-collapse">
-                <thead><tr className="bg-slate-950/50"><th className="p-6 text-[10px] font-black text-slate-500 uppercase">التاريخ</th><th className="p-6 text-[10px] font-black text-slate-500 uppercase">النوع</th><th className="p-6 text-[10px] font-black text-slate-500 uppercase">الوصف</th><th className="p-6 text-[10px] font-black text-slate-500 uppercase">الحالة</th><th className="p-6 text-[10px] font-black text-slate-500 uppercase">الحركة</th></tr></thead>
+                <thead><tr className="bg-slate-950/50"><th className="p-6 text-[10px] font-black text-slate-500 uppercase">{t('finance.ledgerColDate')}</th><th className="p-6 text-[10px] font-black text-slate-500 uppercase">{t('finance.ledgerColType')}</th><th className="p-6 text-[10px] font-black text-slate-500 uppercase">{t('finance.ledgerColDescription')}</th><th className="p-6 text-[10px] font-black text-slate-500 uppercase">{t('finance.ledgerColStatus')}</th><th className="p-6 text-[10px] font-black text-slate-500 uppercase">{t('finance.ledgerColMovement')}</th></tr></thead>
                 <tbody className="divide-y divide-slate-800/50">
                   {ledgerRows.map(row => (
                     <tr key={`${row.type}-${row.id}`} className={trafficRowClass(row.sign === '+' ? 'safe' : row.sign === '-' ? 'danger' : 'warn')}>
-                      <td className="p-6 text-xs text-zinc-400">{new Date(row.date).toLocaleDateString('ar-EG')}</td>
+                      <td className="p-6 text-xs text-zinc-400">{new Date(row.date).toLocaleDateString(dateLocale)}</td>
                       <td className="p-6">{row.type}</td>
                       <td className="p-6 font-bold">{row.title}</td>
                       <td className="p-6 text-sm">{row.status}</td>
-                      <td className={`p-6 font-black ${row.sign === '+' ? 'text-emerald-400' : row.sign === '-' ? 'text-rose-400' : 'text-zinc-400'}`}>{row.sign === '0' ? '—' : `${row.sign}${row.amount.toLocaleString()} ج.م`}</td>
+                      <td className={`p-6 font-black ${row.sign === '+' ? 'text-emerald-400' : row.sign === '-' ? 'text-rose-400' : 'text-zinc-400'}`}>{row.sign === '0' ? '—' : `${row.sign}${row.amount.toLocaleString(dateLocale)} ${currency}`}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -2286,15 +2286,15 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             {activeFinanceTab === 'reps' && (
               <div ref={repsSectionRef} className="p-6 space-y-4">
                 <div className="bg-[#0F1528]/70 border border-white/10 rounded-2xl p-4 text-sm text-zinc-300">
-                  هذه الصفحة مربوطة مباشرة ببيانات المندوبين: الحضور/الانصراف + سرعة الرد + المتابعات + عدد المكالمات مقابل التارجت.
+                  {t('finance.payrollPageHint')}
                 </div>
                 <div className="bg-[#0B1020]/70 border border-white/10 rounded-2xl p-4 space-y-3">
-                  <p className="text-sm font-black">إضافة موظف جديد من المحاسب</p>
+                  <p className="text-sm font-black">{t('finance.addEmployeeTitle')}</p>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                     <input
                       value={newEmployeeForm.name}
                       onChange={(e) => setNewEmployeeForm(prev => ({ ...prev, name: e.target.value }))}
-                      placeholder="اسم الموظف"
+                      placeholder={t('finance.employeeNamePh')}
                       className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm"
                     />
                     <select
@@ -2302,10 +2302,10 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       onChange={(e) => setNewEmployeeForm(prev => ({ ...prev, role: e.target.value as User['role'] }))}
                       className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm"
                     >
-                      <option value="مندوب">مندوب مبيعات</option>
-                      <option value="محاسب">محاسب</option>
-                      <option value="مدير مبيعات">مدير مبيعات</option>
-                      <option value="مدير إنتاج">مدير إنتاج</option>
+                      <option value="مندوب">{t('finance.roleSalesRep')}</option>
+                      <option value="محاسب">{t('finance.roleAccountant')}</option>
+                      <option value="مدير مبيعات">{t('finance.roleSalesManager')}</option>
+                      <option value="مدير إنتاج">{t('finance.roleProductionManager')}</option>
                     </select>
                     <input
                       type="number"
@@ -2313,63 +2313,63 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       value={newEmployeeForm.baseSalary}
                       onChange={(e) => setNewEmployeeForm(prev => ({ ...prev, baseSalary: e.target.value }))}
                       disabled={!PAYROLL_SALARY_ROLES.includes(newEmployeeForm.role)}
-                      placeholder="الراتب الأساسي"
+                      placeholder={t('finance.baseSalaryPh')}
                       className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm disabled:opacity-50"
                     />
                     <button onClick={handleAddEmployeeFromAccountant} className="bg-[#7C6BFF] text-white rounded-xl px-3 py-2 text-sm font-black">
-                      إضافة الموظف
+                      {t('finance.addEmployeeBtn')}
                     </button>
                   </div>
                   <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-400">
-                    <span>إجمالي الموظفين: {users.length}</span>
+                    <span>{t('finance.totalEmployees', { count: users.length })}</span>
                     <span>•</span>
-                    <span>المندوبين: {users.filter(u => u.role === 'مندوب').length}</span>
+                    <span>{t('finance.repsCount', { count: users.filter(u => u.role === 'مندوب').length })}</span>
                     <span>•</span>
-                    <span>المحاسبين: {users.filter(u => u.role === 'محاسب').length}</span>
+                    <span>{t('finance.accountantsCount', { count: users.filter(u => u.role === 'محاسب').length })}</span>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-3">
-                  <MiniMetricCard title="إجمالي المرتبات الأساسية" value={`${repsPayrollSummary.totalBase.toLocaleString()} ج.م`} hint="قبل الخصومات" icon={Wallet} tone="indigo" />
-                  <MiniMetricCard title="إجمالي صافي المرتبات" value={`${repsPayrollSummary.totalNet.toLocaleString()} ج.م`} hint="بعد الخصومات" icon={CheckCircle2} tone="emerald" />
-                  <MiniMetricCard title="إجمالي الخصومات" value={`${repsPayrollSummary.totalPenalties.toLocaleString()} ج.م`} hint={`${repsPayrollSummary.payrollGapPercent}% من الأساسي`} icon={AlertCircle} tone="rose" />
-                  <MiniMetricCard title="موظفين يحتاجوا متابعة" value={repsPayrollSummary.repsNeedAttention} hint="تأخير/متابعات/مكالمات" icon={Users} tone="amber" />
+                  <MiniMetricCard title={t('finance.payrollTotalBase')} value={`${repsPayrollSummary.totalBase.toLocaleString(dateLocale)} ${currency}`} hint={t('finance.payrollTotalBaseHint')} icon={Wallet} tone="indigo" />
+                  <MiniMetricCard title={t('finance.payrollTotalNet')} value={`${repsPayrollSummary.totalNet.toLocaleString(dateLocale)} ${currency}`} hint={t('finance.payrollTotalNetHint')} icon={CheckCircle2} tone="emerald" />
+                  <MiniMetricCard title={t('finance.payrollTotalPenalties')} value={`${repsPayrollSummary.totalPenalties.toLocaleString(dateLocale)} ${currency}`} hint={`${repsPayrollSummary.payrollGapPercent}%`} icon={AlertCircle} tone="rose" />
+                  <MiniMetricCard title={t('finance.payrollNeedAttention')} value={repsPayrollSummary.repsNeedAttention} hint={t('finance.payrollNeedAttentionHint')} icon={Users} tone="amber" />
                 </div>
                 <div className="bg-slate-950/40 border border-white/10 rounded-2xl p-4 flex flex-wrap items-center gap-3">
                   <span className={`px-3 py-1 rounded-lg text-xs font-black ${isPayrollApproved(currentMonthKey) ? 'bg-emerald-500/20 text-emerald-300' : 'bg-amber-500/20 text-amber-300'}`}>
-                    حالة كشف المرتبات {currentMonthKey}: {isPayrollApproved(currentMonthKey) ? 'معتمد' : 'غير معتمد'}
+                    {t('finance.payrollSheetStatus', { month: currentMonthKey, status: isPayrollApproved(currentMonthKey) ? t('finance.payrollApproved') : t('finance.payrollNotApproved') })}
                   </span>
                   {currentPayrollApproval && (
                     <span className="text-xs text-zinc-400">
-                      اعتماد بواسطة {currentPayrollApproval.approvedByName} - {new Date(currentPayrollApproval.approvedAt).toLocaleString('ar-EG')}
+                      {t('finance.payrollApprovedBy', { name: currentPayrollApproval.approvedByName, date: new Date(currentPayrollApproval.approvedAt).toLocaleString(dateLocale) })}
                     </span>
                   )}
                   <button
                     onClick={exportPayrollCsv}
                     className="px-3 py-2 rounded-xl text-xs font-black bg-[#0F1528] border border-white/10 text-zinc-200"
                   >
-                    تصدير كشف المرتبات CSV
+                    {t('finance.exportPayrollCsv')}
                   </button>
                   <button
                     onClick={printPayrollReport}
                     className="px-3 py-2 rounded-xl text-xs font-black bg-[#0F1528] border border-white/10 text-zinc-200"
                   >
-                    طباعة / حفظ PDF
+                    {t('finance.printSavePdf')}
                   </button>
                   {currentUser?.role === 'محاسب' && !isPayrollApproved(currentMonthKey) && (
                     <>
                       <button
                         onClick={async () => {
                           const ok = await requestPayrollApproval(currentMonthKey, 'manual');
-                          if (!ok) { toast.error('يوجد طلب قائم بالفعل أو تم اعتماد الشهر'); return; }
-                          toast.success(`تم إرسال طلب اعتماد كشف المرتبات لشهر ${currentMonthKey}`);
+                          if (!ok) { toast.error(t('finance.toastPayrollRequestExists')); return; }
+                          toast.success(t('finance.toastPayrollRequestSent', { month: currentMonthKey }));
                         }}
                         disabled={Boolean(currentPayrollRequest)}
                         className="px-3 py-2 rounded-xl text-xs font-black bg-amber-500 text-slate-950 disabled:opacity-50 disabled:cursor-not-allowed"
                       >
-                        إرسال طلب اعتماد للمالك
+                        {t('finance.requestPayrollApproval')}
                       </button>
                       <div className="flex items-center gap-2 bg-[#0F1528] border border-white/10 rounded-xl px-2 py-1">
-                        <span className="text-[11px] text-zinc-400">إرسال تلقائي يوم</span>
+                        <span className="text-[11px] text-zinc-400">{t('finance.autoSendDay')}</span>
                         <input
                           type="number"
                           min={1}
@@ -2392,23 +2392,23 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       <button
                         onClick={async () => {
                           const ok = await ownerApprovePayrollRequest(currentPayrollRequest.id);
-                          if (!ok) { toast.error('تعذر اعتماد الطلب'); return; }
-                          toast.success(`تم اعتماد كشف المرتبات لشهر ${currentMonthKey}`);
+                          if (!ok) { toast.error(t('finance.toastPayrollApproveFailed')); return; }
+                          toast.success(t('finance.toastPayrollApprovedMonth', { month: currentMonthKey }));
                         }}
                         className="px-3 py-2 rounded-xl text-xs font-black bg-emerald-500 text-slate-950"
                       >
-                        اعتماد طلب المالك
+                        {t('finance.approveOwnerRequest')}
                       </button>
                       <button
                         onClick={async () => {
-                          const reason = window.prompt('سبب الرفض (اختياري):') || undefined;
+                          const reason = window.prompt(t('finance.rejectReasonOptional')) || undefined;
                           const ok = await ownerRejectPayrollRequest(currentPayrollRequest.id, reason);
-                          if (!ok) { toast.error('تعذر رفض الطلب'); return; }
-                          toast.info('تم رفض طلب اعتماد كشف المرتبات');
+                          if (!ok) { toast.error(t('finance.toastPayrollRejectFailed')); return; }
+                          toast.info(t('finance.toastPayrollRejected'));
                         }}
                         className="px-3 py-2 rounded-xl text-xs font-black bg-rose-500 text-white"
                       >
-                        رفض الطلب
+                        {t('finance.rejectRequest')}
                       </button>
                     </>
                   )}
@@ -2417,35 +2417,41 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       onClick={async () => {
                         const ok = await reopenPayroll(currentMonthKey);
                         if (!ok) {
-                          toast.error('تعذر إلغاء الاعتماد');
+                          toast.error(t('finance.toastPayrollRevokeFailed'));
                           return;
                         }
-                        toast.info(`تم إلغاء اعتماد كشف المرتبات لشهر ${currentMonthKey}`);
+                        toast.info(t('finance.toastPayrollRevokeSuccess', { month: currentMonthKey }));
                       }}
                       className="px-3 py-2 rounded-xl text-xs font-black bg-rose-500 text-white"
                     >
-                      إلغاء الاعتماد
+                      {t('finance.revokeApproval')}
                     </button>
                   )}
                 </div>
                 <div className="bg-[#0B1020]/50 border border-white/10 rounded-2xl p-3 text-xs space-y-2">
-                  <p className="font-black text-zinc-200">طلب اعتماد المرتبات (مستقل)</p>
+                  <p className="font-black text-zinc-200">{t('finance.payrollApprovalPanelTitle')}</p>
                   {currentPayrollRequest ? (
                     <>
                       <p className="text-zinc-300">
-                        حالة الطلب: <span className="text-amber-300 font-black">بانتظار اعتماد المالك</span> — بواسطة {currentPayrollRequest.requestedByName}
+                        {t('finance.payrollRequestPending', { name: currentPayrollRequest.requestedByName })}
                       </p>
                       <p className="text-zinc-400">
-                        الكوبون المالي المرفق: مصروفات ({currentPayrollRequest.claimsSummary.pendingExpensesCount}) + مطالبات إنتاج ({currentPayrollRequest.claimsSummary.pendingProdClaimsCount}) + عهد بانتظار دفع ({currentPayrollRequest.claimsSummary.pendingCustodyPaymentsCount}) = <span className="text-white font-black">{currentPayrollRequest.claimsSummary.totalEstimatedAmount.toLocaleString()} ج.م</span>
+                        {t('finance.payrollClaimsSummary', {
+                          exp: currentPayrollRequest.claimsSummary.pendingExpensesCount,
+                          prod: currentPayrollRequest.claimsSummary.pendingProdClaimsCount,
+                          custody: currentPayrollRequest.claimsSummary.pendingCustodyPaymentsCount,
+                          total: currentPayrollRequest.claimsSummary.totalEstimatedAmount.toLocaleString(dateLocale),
+                          currency,
+                        })}
                       </p>
                     </>
                   ) : latestPayrollRequest ? (
                     <p className="text-zinc-400">
-                      آخر طلب هذا الشهر: <span className={latestPayrollRequest.status === 'معتمد' ? 'text-emerald-300 font-black' : 'text-rose-300 font-black'}>{latestPayrollRequest.status}</span>
-                      {latestPayrollRequest.rejectReason ? ` — السبب: ${latestPayrollRequest.rejectReason}` : ''}
+                      {t('finance.lastPayrollRequest', { status: latestPayrollRequest.status })}
+                      {latestPayrollRequest.rejectReason ? t('finance.rejectReasonSuffix', { reason: latestPayrollRequest.rejectReason }) : ''}
                     </p>
                   ) : (
-                    <p className="text-zinc-500">لا يوجد طلب اعتماد مرسل لهذا الشهر حتى الآن.</p>
+                    <p className="text-zinc-500">{t('finance.noPayrollRequestYet')}</p>
                   )}
                 </div>
                 <div className="bg-[#0B1020]/60 border border-white/10 rounded-2xl p-3 flex flex-wrap items-center gap-2">
@@ -2454,7 +2460,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                     <input
                       value={payrollSearch}
                       onChange={(e) => setPayrollSearch(e.target.value)}
-                      placeholder="بحث باسم المندوب"
+                      placeholder={t('finance.payrollSearchPh')}
                       className="w-full bg-[#0F1528] border border-white/10 rounded-xl pr-9 pl-3 py-2 text-xs"
                     />
                   </div>
@@ -2463,39 +2469,37 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                     onChange={(e) => setPayrollSort(e.target.value as typeof payrollSort)}
                     className="bg-[#0F1528] border border-white/10 rounded-xl px-3 py-2 text-xs"
                   >
-                    <option value="net_desc">فرز: أعلى صافي مرتب</option>
-                    <option value="penalty_desc">فرز: أعلى خصومات</option>
-                    <option value="response_asc">فرز: أسرع استجابة</option>
-                    <option value="overdue_desc">فرز: أكثر متابعات متأخرة</option>
-                    <option value="name_asc">فرز: الاسم (أ-ي)</option>
+                    <option value="net_desc">{t('finance.sortNetDesc')}</option>
+                    <option value="penalty_desc">{t('finance.sortPenaltyDesc')}</option>
+                    <option value="response_asc">{t('finance.sortResponseAsc')}</option>
+                    <option value="overdue_desc">{t('finance.sortOverdueDesc')}</option>
+                    <option value="name_asc">{t('finance.sortNameAsc')}</option>
                   </select>
                   <select
                     value={payrollRoleFilter}
                     onChange={(e) => setPayrollRoleFilter(e.target.value as typeof payrollRoleFilter)}
                     className="bg-[#0F1528] border border-white/10 rounded-xl px-3 py-2 text-xs"
                   >
-                    <option value="all">الدور: الكل</option>
-                    <option value="مالك">الدور: مالك</option>
-                    <option value="محاسب">الدور: محاسب</option>
-                    <option value="مدير مبيعات">الدور: مدير مبيعات</option>
-                    <option value="مدير إنتاج">الدور: مدير إنتاج</option>
-                    <option value="مندوب">الدور: مندوب</option>
+                    <option value="all">{t('finance.roleFilterAll')}</option>
+                    {(['مالك', 'محاسب', 'مدير مبيعات', 'مدير إنتاج', 'مندوب'] as const).map((role) => (
+                      <option key={role} value={role}>{t('finance.roleFilter', { role: getRoleLabel(role, t) })}</option>
+                    ))}
                   </select>
-                  <span className="text-[11px] text-zinc-400">عدد الصفوف المعروضة: {filteredRepsFinance.length}</span>
+                  <span className="text-[11px] text-zinc-400">{t('finance.rowsShown', { count: filteredRepsFinance.length })}</span>
                 </div>
                 <div className="overflow-x-auto max-h-[560px] overflow-y-auto rounded-2xl border border-white/5">
                   <table className="w-full min-w-[1100px]">
                     <thead>
                       <tr className="bg-[#0B1020]/95">
-                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">الموظف</th>
-                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">الحضور</th>
-                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">المكالمات</th>
-                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">متوسط الرد</th>
-                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">متابعات متأخرة</th>
-                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">إجمالي الخصومات</th>
-                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">المرتب الأساسي</th>
-                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">صافي المرتب</th>
-                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">تسجيل ماكينة</th>
+                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colEmployee')}</th>
+                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colAttendance')}</th>
+                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colCalls')}</th>
+                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colAvgResponse')}</th>
+                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colOverdueFollowUps')}</th>
+                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colTotalPenalties')}</th>
+                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colBaseSalary')}</th>
+                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colNetSalary')}</th>
+                        <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colMachineLog')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/10">
@@ -2510,11 +2514,11 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                         <tr key={row.repId} className={trafficRowClass(riskTone)}>
                           <td className="p-3 font-bold">
                             <div>{row.repName}</div>
-                            <div className="text-[10px] text-zinc-500 mt-1">{row.role}</div>
+                            <div className="text-[10px] text-zinc-500 mt-1">{getRoleLabel(row.role as User['role'], t)}</div>
                           </td>
                           <td className="p-3 text-sm">
-                            <div>أيام حضور: {row.attendanceDays}</div>
-                            <div className="text-rose-300 text-xs">تأخير حضور: {row.lateAttendanceDays} يوم</div>
+                            <div>{t('finance.attendanceDays', { count: row.attendanceDays })}</div>
+                            <div className="text-rose-300 text-xs">{t('finance.lateAttendanceDays', { count: row.lateAttendanceDays })}</div>
                           </td>
                           <td className="p-3 text-sm">
                             <div className="font-bold">{row.callsTarget > 0 ? `${row.callsCount}/${row.callsTarget}` : '—'}</div>
@@ -2522,12 +2526,12 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                               <div className="h-full bg-indigo-400" style={{ width: `${row.callsTarget > 0 ? Math.min(100, Math.round((row.callsCount / Math.max(1, row.callsTarget)) * 100)) : 0}%` }} />
                             </div>
                           </td>
-                          <td className="p-3 text-sm">{row.callsTarget > 0 ? `${row.avgResponseMins} دقيقة` : '—'}</td>
+                          <td className="p-3 text-sm">{row.callsTarget > 0 ? `${row.avgResponseMins} ${t('common.minutes')}` : '—'}</td>
                           <td className="p-3 text-sm">{row.callsTarget > 0 ? row.overdueFollowUps : '—'}</td>
                           <td className="p-3">
-                            <div className="text-rose-300 font-black">{row.penalties.totalPenalty.toLocaleString()} ج.م</div>
+                            <div className="text-rose-300 font-black">{row.penalties.totalPenalty.toLocaleString(dateLocale)} {currency}</div>
                             <div className="text-[11px] text-zinc-500">
-                              رد: {row.penalties.lateResponsePenalty} | متابعة: {row.penalties.followUpPenalty} | مكالمات: {row.penalties.callsPenalty} | حضور: {row.penalties.attendancePenalty}
+                              {t('finance.penaltyBreakdown', { resp: row.penalties.lateResponsePenalty, fup: row.penalties.followUpPenalty, calls: row.penalties.callsPenalty, att: row.penalties.attendancePenalty })}
                             </div>
                           </td>
                           <td className="p-3">
@@ -2541,21 +2545,21 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                                 const salary = Math.max(0, Number(e.currentTarget.value) || 0);
                                 const ok = await updateEmployeeSalary(row.repId, salary);
                                 if (!ok) {
-                                  toast.error('تعذر حفظ الراتب على السيرفر');
+                                  toast.error(t('finance.toastSalarySaveFailed'));
                                   return;
                                 }
-                                toast.success(`تم تحديث راتب ${row.repName}`);
+                                toast.success(t('finance.toastSalaryUpdated', { name: row.repName }));
                                 })();
                               }}
                               className="w-28 bg-[#0F1528] border border-white/10 rounded-lg px-2 py-1 text-xs"
                             />
-                            <p className="text-[10px] text-zinc-500 mt-1">ج.م</p>
+                            <p className="text-[10px] text-zinc-500 mt-1">{currency}</p>
                           </td>
-                          <td className="p-3 font-black text-emerald-300">{row.netSalary.toLocaleString()} ج.م</td>
+                          <td className="p-3 font-black text-emerald-300">{row.netSalary.toLocaleString(dateLocale)} {currency}</td>
                           <td className="p-3">
                             <div className="flex items-center gap-2">
-                              <button disabled={isPayrollApproved(currentMonthKey)} onClick={() => { void (async () => { const ok = await logAttendance(row.repId, 'in', 'machine'); if (!ok) { toast.error('تعذر تسجيل الحضور'); return; } toast.success(`تم تسجيل حضور ${row.repName}`); })(); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black disabled:opacity-40 disabled:cursor-not-allowed">حضور</button>
-                              <button disabled={isPayrollApproved(currentMonthKey)} onClick={() => { void (async () => { const ok = await logAttendance(row.repId, 'out', 'machine'); if (!ok) { toast.error('تعذر تسجيل الانصراف'); return; } toast.info(`تم تسجيل انصراف ${row.repName}`); })(); }} className="px-2 py-1 rounded-lg text-xs bg-amber-500 text-slate-950 font-black disabled:opacity-40 disabled:cursor-not-allowed">انصراف</button>
+                              <button disabled={isPayrollApproved(currentMonthKey)} onClick={() => { void (async () => { const ok = await logAttendance(row.repId, 'in', 'machine'); if (!ok) { toast.error(t('finance.toastCheckInFailed')); return; } toast.success(t('finance.toastCheckInSuccess', { name: row.repName })); })(); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black disabled:opacity-40 disabled:cursor-not-allowed">{t('finance.checkIn')}</button>
+                              <button disabled={isPayrollApproved(currentMonthKey)} onClick={() => { void (async () => { const ok = await logAttendance(row.repId, 'out', 'machine'); if (!ok) { toast.error(t('finance.toastCheckOutFailed')); return; } toast.info(t('finance.toastCheckOutSuccess', { name: row.repName })); })(); }} className="px-2 py-1 rounded-lg text-xs bg-amber-500 text-slate-950 font-black disabled:opacity-40 disabled:cursor-not-allowed">{t('finance.checkOut')}</button>
                             </div>
                           </td>
                         </tr>
@@ -2564,7 +2568,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                     </tbody>
                   </table>
                   {filteredRepsFinance.length === 0 && (
-                    <div className="p-8 text-center text-zinc-400 text-sm">لا توجد نتائج مطابقة للبحث الحالي.</div>
+                    <div className="p-8 text-center text-zinc-400 text-sm">{t('finance.noPayrollResults')}</div>
                   )}
                 </div>
               </div>
@@ -2572,22 +2576,22 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             {activeFinanceTab === 'coa' && (
               <div className="p-6 space-y-4">
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                  <input value={coaForm.code} onChange={(e) => setCoaForm(prev => ({ ...prev, code: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm" placeholder="كود الحساب" />
-                  <input value={coaForm.name} onChange={(e) => setCoaForm(prev => ({ ...prev, name: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm" placeholder="اسم الحساب" />
+                  <input value={coaForm.code} onChange={(e) => setCoaForm(prev => ({ ...prev, code: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm" placeholder={t('finance.coaCodePh')} />
+                  <input value={coaForm.name} onChange={(e) => setCoaForm(prev => ({ ...prev, name: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm" placeholder={t('finance.coaNamePh')} />
                   <select value={coaForm.type} onChange={(e) => setCoaForm(prev => ({ ...prev, type: e.target.value as ChartOfAccount['type'] }))} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm">
-                    <option value="asset">أصل</option><option value="liability">التزام</option><option value="equity">حقوق ملكية</option><option value="revenue">إيراد</option><option value="expense">مصروف</option>
+                    <option value="asset">{getCoaAccountTypeLabel('asset', t)}</option><option value="liability">{getCoaAccountTypeLabel('liability', t)}</option><option value="equity">{getCoaAccountTypeLabel('equity', t)}</option><option value="revenue">{getCoaAccountTypeLabel('revenue', t)}</option><option value="expense">{getCoaAccountTypeLabel('expense', t)}</option>
                   </select>
-                  <button onClick={handleAddAccount} className="bg-indigo-500 text-white rounded-xl font-black text-sm">إضافة حساب</button>
+                  <button onClick={handleAddAccount} className="bg-indigo-500 text-white rounded-xl font-black text-sm">{t('finance.addCoaAccount')}</button>
                 </div>
                 <div className="space-y-2 max-h-80 overflow-auto">
                   {chartOfAccounts.map(acc => (
                     <div key={acc.code} className="grid grid-cols-5 gap-2 items-center bg-slate-950/40 border border-white/10 rounded-xl px-3 py-2 text-sm">
                       <span className="font-mono text-zinc-300">{acc.code}</span>
                       <span className="font-bold">{acc.name}</span>
-                      <span className="text-zinc-400">{acc.type}</span>
-                      <span className={`text-xs font-black ${acc.isSystem ? 'text-amber-300' : 'text-emerald-300'}`}>{acc.isSystem ? 'System' : 'Custom'}</span>
-                      <button onClick={() => { const ok = removeChartAccount(acc.code); if (!ok) { toast.error('لا يمكن حذف هذا الحساب (نظامي أو مستخدم في قيود)'); return; } toast.success('تم حذف الحساب'); }} className="bg-rose-500/20 text-rose-300 rounded-lg px-3 py-1 text-xs font-black">
-                        حذف
+                      <span className="text-zinc-400">{getCoaAccountTypeLabel(acc.type, t)}</span>
+                      <span className={`text-xs font-black ${acc.isSystem ? 'text-amber-300' : 'text-emerald-300'}`}>{acc.isSystem ? t('finance.coaSystem') : t('finance.coaCustom')}</span>
+                      <button onClick={() => { const ok = removeChartAccount(acc.code); if (!ok) { toast.error(t('finance.toastCoaDeleteFailed')); return; } toast.success(t('finance.coaDeleted')); }} className="bg-rose-500/20 text-rose-300 rounded-lg px-3 py-1 text-xs font-black">
+                        {t('common.delete')}
                       </button>
                     </div>
                   ))}
@@ -2597,8 +2601,8 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             {activeFinanceTab === 'codebook' && (
               <div className="p-6 space-y-6">
                 <div className="bg-[#0B1020]/70 border border-amber-500/20 rounded-2xl p-4 space-y-3">
-                  <h4 className="font-black mb-1">قيود وسياسة عروض الأسعار (مبيعات)</h4>
-                  <p className="text-xs text-zinc-400">يحدد المحاسب النص التوجيهي ومراكز التكلفة المسموح إرسال عروض الأسعار منها، والحد التنبيهي للمبالغ.</p>
+                  <h4 className="font-black mb-1">{t('finance.quotePolicyTitle')}</h4>
+                  <p className="text-xs text-zinc-400">{t('finance.quotePolicyHint')}</p>
                   <textarea
                     value={accountingPolicy.policyNotes}
                     onChange={(e) => { void updateAccountingPolicy({ policyNotes: e.target.value }); }}
@@ -2606,7 +2610,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                     className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm"
                   />
                   <div>
-                    <label className="text-xs font-bold text-zinc-400">مراكز التكلفة المسموحة لعروض المبيعات (مفصولة بفاصلة)</label>
+                    <label className="text-xs font-bold text-zinc-400">{t('finance.allowedCostCentersLabel')}</label>
                     <input
                       value={accountingPolicy.allowedCostCentersForQuotes.join(', ')}
                       onChange={(e) => {
@@ -2615,30 +2619,30 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                         });
                       }}
                       className="w-full mt-1 bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm"
-                      placeholder="عام, تصوير, إعلانات"
+                      placeholder={t('finance.allowedCostCentersPh')}
                     />
                   </div>
                   <div className="flex items-center gap-3 flex-wrap">
-                    <label className="text-xs text-zinc-400">تنبيه عند تجاوز مبلغ (ج.م)</label>
+                    <label className="text-xs text-zinc-400">{t('finance.alertAmountLabel', { currency })}</label>
                     <input
                       type="number"
                       value={accountingPolicy.minAmountHighlight || 0}
                       onChange={(e) => { void updateAccountingPolicy({ minAmountHighlight: Math.max(0, Number(e.target.value) || 0) }); }}
                       className="w-36 bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm"
                     />
-                    <span className="text-[10px] text-zinc-500">0 = بدون تنبيه تلقائي في الجدول</span>
+                    <span className="text-[10px] text-zinc-500">{t('finance.noAutoHighlight')}</span>
                   </div>
                 </div>
 
                 <div className="bg-[#0B1020]/70 border border-white/10 rounded-2xl p-4">
-                  <h4 className="font-black mb-3">أكواد فئات المصروفات</h4>
-                  <p className="text-xs text-zinc-400 mb-4">المحاسب يقدر يحدد Prefix لكل فئة، وسيتم استخدامه تلقائيًا عند ترميز المصروفات.</p>
+                  <h4 className="font-black mb-3">{t('finance.expenseCodesTitle')}</h4>
+                  <p className="text-xs text-zinc-400 mb-4">{t('finance.expenseCodesHint')}</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {expenseCodingRules.map((rule) => (
                       <div key={`exp-code-${rule.category}`} className="bg-[#0F1528]/70 border border-white/10 rounded-xl p-3 flex items-center justify-between gap-3">
                         <div>
-                          <p className="font-bold">{rule.category}</p>
-                          <p className="text-[11px] text-zinc-500">مثال: {rule.prefix || 'EXP-OTH'}-0001</p>
+                          <p className="font-bold">{getExpenseCategoryLabel(rule.category, t)}</p>
+                          <p className="text-[11px] text-zinc-500">{t('finance.expenseCodeExample', { prefix: rule.prefix || 'EXP-OTH' })}</p>
                         </div>
                         <input
                           value={rule.prefix}
@@ -2652,8 +2656,8 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                 </div>
 
                 <div className="bg-[#0B1020]/70 border border-white/10 rounded-2xl p-4">
-                  <h4 className="font-black mb-3">كود العملاء</h4>
-                  <p className="text-xs text-zinc-400 mb-3">حدد البادئة المستخدمة في توليد أكواد العملاء داخل الفواتير.</p>
+                  <h4 className="font-black mb-3">{t('finance.customerCodeTitle')}</h4>
+                  <p className="text-xs text-zinc-400 mb-3">{t('finance.customerCodeHint')}</p>
                   <div className="flex items-center gap-3">
                     <input
                       value={customerCodePrefix}
@@ -2661,35 +2665,35 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       className="w-40 bg-[#0B1020] border border-white/15 rounded-lg px-3 py-2 text-sm font-mono"
                       placeholder="CUS"
                     />
-                    <span className="text-xs text-zinc-400">مثال الكود: {(customerCodePrefix || 'CUS').toUpperCase()}-0001</span>
+                    <span className="text-xs text-zinc-400">{t('finance.customerCodeExample', { code: (customerCodePrefix || 'CUS').toUpperCase() })}</span>
                   </div>
                 </div>
 
                 <div className="bg-[#0B1020]/70 border border-white/10 rounded-2xl p-4 space-y-3">
-                  <h4 className="font-black">أكواد القيود اليومية الجاهزة</h4>
+                  <h4 className="font-black">{t('finance.journalCodesTitle')}</h4>
                   <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
                     <input
                       value={newJournalCoding.title}
                       onChange={(e) => setNewJournalCoding(prev => ({ ...prev, title: e.target.value }))}
                       className="bg-[#0B1020] border border-white/15 rounded-xl px-3 py-2 text-sm"
-                      placeholder="اسم الكود (مثال: ضيافة شهرية)"
+                      placeholder={t('finance.journalCodeNamePh')}
                     />
                     <select
                       value={newJournalCoding.accountCode}
                       onChange={(e) => setNewJournalCoding(prev => ({ ...prev, accountCode: e.target.value }))}
                       className="bg-[#0B1020] border border-white/15 rounded-xl px-3 py-2 text-sm"
                     >
-                      <option value="">اختر الحساب</option>
+                      <option value="">{t('finance.selectAccount')}</option>
                       {chartOfAccounts.map(acc => <option key={`book-${acc.code}`} value={acc.code}>{acc.code} - {acc.name}</option>)}
                     </select>
                     <input
                       value={newJournalCoding.costCenter}
                       onChange={(e) => setNewJournalCoding(prev => ({ ...prev, costCenter: e.target.value }))}
                       className="bg-[#0B1020] border border-white/15 rounded-xl px-3 py-2 text-sm"
-                      placeholder="مركز التكلفة"
+                      placeholder={t('finance.costCenterPh')}
                     />
                     <button onClick={handleAddJournalCodingRule} className="bg-[#7C6BFF] text-white rounded-xl px-3 py-2 text-sm font-black">
-                      إضافة كود
+                      {t('finance.addJournalCode')}
                     </button>
                   </div>
                   <div className="space-y-2">
@@ -2697,17 +2701,17 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       <div key={rule.id} className="flex items-center justify-between gap-3 bg-[#0F1528]/70 border border-white/10 rounded-xl px-3 py-2">
                         <div>
                           <p className="font-bold">{rule.title}</p>
-                          <p className="text-[11px] text-zinc-400">{rule.accountCode} | {rule.costCenter || 'عام'}</p>
+                          <p className="text-[11px] text-zinc-400">{rule.accountCode} | {rule.costCenter || t('finance.generalCostCenter')}</p>
                         </div>
                         <button
                           onClick={() => setJournalCodingRules(prev => prev.filter(r => r.id !== rule.id))}
                           className="px-2 py-1 rounded-lg text-xs font-black bg-rose-500/20 text-rose-300"
                         >
-                          حذف
+                          {t('common.delete')}
                         </button>
                       </div>
                     ))}
-                    {journalCodingRules.length === 0 && <p className="text-xs text-zinc-500">لا يوجد أكواد يومية محفوظة بعد.</p>}
+                    {journalCodingRules.length === 0 && <p className="text-xs text-zinc-500">{t('finance.noJournalCodes')}</p>}
                   </div>
                 </div>
               </div>
@@ -2716,7 +2720,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
               <div className="p-6 space-y-4">
                 {journalCodingRules.length > 0 && (
                   <div className="bg-[#0B1020]/70 border border-white/10 rounded-2xl p-3 flex flex-wrap items-center gap-2">
-                    <span className="text-xs text-zinc-400">تطبيق كود جاهز:</span>
+                    <span className="text-xs text-zinc-400">{t('finance.applyReadyCode')}</span>
                     {journalCodingRules.map(rule => (
                       <button
                         key={`quick-rule-${rule.id}`}
@@ -2730,7 +2734,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                 )}
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
                   <input type="date" value={journalForm.date} onChange={(e) => setJournalForm(prev => ({ ...prev, date: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm" />
-                  <input value={journalForm.description} onChange={(e) => setJournalForm(prev => ({ ...prev, description: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm md:col-span-2" placeholder="وصف القيد" />
+                  <input value={journalForm.description} onChange={(e) => setJournalForm(prev => ({ ...prev, description: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm md:col-span-2" placeholder={t('finance.journalDescPh')} />
                 </div>
                 <div className="space-y-2">
                   {journalForm.lines.map((line, idx) => (
@@ -2738,42 +2742,42 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       <select value={line.accountCode} onChange={(e) => updateJournalLine(idx, { accountCode: e.target.value })} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm">
                         {chartOfAccounts.map(acc => <option key={acc.code} value={acc.code}>{acc.code} - {acc.name}</option>)}
                       </select>
-                      <input type="number" min={0} value={line.debit} onChange={(e) => updateJournalLine(idx, { debit: e.target.value, credit: '' })} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm" placeholder="مدين" />
-                      <input type="number" min={0} value={line.credit} onChange={(e) => updateJournalLine(idx, { credit: e.target.value, debit: '' })} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm" placeholder="دائن" />
-                      <input value={line.costCenter} onChange={(e) => updateJournalLine(idx, { costCenter: e.target.value })} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm" placeholder="مركز تكلفة" />
-                      <button onClick={() => setJournalForm(prev => ({ ...prev, lines: prev.lines.filter((_, i) => i !== idx) }))} className="bg-rose-500/20 text-rose-300 rounded-xl px-3 py-2 text-xs font-black">حذف سطر</button>
+                      <input type="number" min={0} value={line.debit} onChange={(e) => updateJournalLine(idx, { debit: e.target.value, credit: '' })} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm" placeholder={t('finance.debitPh')} />
+                      <input type="number" min={0} value={line.credit} onChange={(e) => updateJournalLine(idx, { credit: e.target.value, debit: '' })} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm" placeholder={t('finance.creditPh')} />
+                      <input value={line.costCenter} onChange={(e) => updateJournalLine(idx, { costCenter: e.target.value })} className="bg-slate-800 border border-slate-700 rounded-xl px-3 py-2 text-sm" placeholder={t('finance.costCenterPh')} />
+                      <button onClick={() => setJournalForm(prev => ({ ...prev, lines: prev.lines.filter((_, i) => i !== idx) }))} className="bg-rose-500/20 text-rose-300 rounded-xl px-3 py-2 text-xs font-black">{t('finance.deleteLine')}</button>
                     </div>
                   ))}
                 </div>
                 <div className="flex items-center gap-3">
-                  <button onClick={addJournalLine} className="px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-sm font-black">إضافة سطر</button>
-                  <button onClick={handleCreateJournal} className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 text-sm font-black">حفظ القيد</button>
+                  <button onClick={addJournalLine} className="px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-sm font-black">{t('finance.addLine')}</button>
+                  <button onClick={handleCreateJournal} className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 text-sm font-black">{t('finance.saveJournal')}</button>
                   {journalFocusId && (
                     <button
                       onClick={() => setJournalFocusId(null)}
                       className="px-4 py-2 rounded-xl bg-[#0F1528] border border-white/10 text-sm font-black text-zinc-200"
                     >
-                      إظهار كل القيود
+                      {t('finance.showAllJournals')}
                     </button>
                   )}
-                  <span className="text-xs text-zinc-400">يشترط توازن المدين والدائن.</span>
+                  <span className="text-xs text-zinc-400">{t('finance.balanceRequired')}</span>
                 </div>
                 {(currentUser?.role === 'محاسب' || currentUser?.role === 'مالك') && manualJournalEntries.length > 0 && (
                   <div className="flex justify-end">
                     <button
                       type="button"
                       onClick={async () => {
-                        if (!window.confirm('حذف جميع قيود الحسابات نهائياً؟ لا يمكن التراجع.')) return;
+                        if (!window.confirm(t('finance.deleteAllJournalsConfirm'))) return;
                         let deletedCount = 0;
                         for (const entry of [...manualJournalEntries]) {
                           const ok = await removeManualJournalEntry(entry.id);
                           if (ok) deletedCount++;
                         }
-                        toast.success(`تم حذف ${deletedCount} قيد`);
+                        toast.success(t('finance.toastJournalsDeleted', { count: deletedCount }));
                       }}
                       className="rounded-xl border border-rose-500/40 bg-rose-500/15 px-3 py-1.5 text-xs font-black text-rose-200 hover:bg-rose-500/25 transition-colors"
                     >
-                      حذف الكل
+                      {t('finance.deleteAllJournalsBtn')}
                     </button>
                   </div>
                 )}
@@ -2783,7 +2787,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       <div className="flex flex-wrap items-start justify-between gap-2 mb-1">
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-black">{entry.id} - {entry.description}</p>
-                          <p className="text-xs text-zinc-500">{new Date(entry.date).toLocaleDateString('ar-EG')}</p>
+                          <p className="text-xs text-zinc-500">{new Date(entry.date).toLocaleDateString(dateLocale)}</p>
                         </div>
                         {(currentUser?.role === 'محاسب' || currentUser?.role === 'مالك') && (
                           <button
@@ -2791,23 +2795,23 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                             onClick={async () => {
                               const ok = await removeManualJournalEntry(entry.id);
                               if (!ok) {
-                                toast.error('لا يمكن الحذف: شهر أو سنة مغلقة، أو القيد مرتبط بتحصيل فاتورة أو عهدة');
+                                toast.error(t('finance.toastJournalDeleteFailed'));
                               } else {
-                                toast.success('تم حذف القيد');
+                                toast.success(t('finance.journalDeleted'));
                               }
                             }}
                             className="shrink-0 rounded-lg border border-rose-500/40 bg-rose-500/15 px-2 py-1 text-[10px] font-black text-rose-200 hover:bg-rose-500/25"
                           >
-                            حذف
+                            {t('common.delete')}
                           </button>
                         )}
                       </div>
                       {entry.lines.map((line, li) => (
                         <div key={`${entry.id}-${li}`} className="grid grid-cols-4 gap-2 text-xs text-zinc-300">
                           <span>{line.accountCode}</span>
-                          <span className="text-emerald-300">{line.debit.toLocaleString()}</span>
-                          <span className="text-rose-300">{line.credit.toLocaleString()}</span>
-                          <span>{line.costCenter || 'عام'}</span>
+                          <span className="text-emerald-300">{line.debit.toLocaleString(dateLocale)}</span>
+                          <span className="text-rose-300">{line.credit.toLocaleString(dateLocale)}</span>
+                          <span>{line.costCenter || t('finance.generalCostCenter')}</span>
                         </div>
                       ))}
                     </div>
@@ -2819,45 +2823,45 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
               <div className="p-8 space-y-6">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                   <div className="bg-slate-950/30 border border-white/10 rounded-2xl p-6 space-y-3">
-                    <h5 className="font-black text-lg">قائمة الدخل (P&L)</h5>
-                    <div className="flex justify-between text-zinc-300"><span>الإيرادات المحصلة</span><span className="font-black text-emerald-400">{accountingReport.revenueRecognized.toLocaleString()} ج.م</span></div>
-                    <div className="flex justify-between text-zinc-300"><span>المصروفات المدفوعة</span><span className="font-black text-rose-400">{accountingReport.expenseRecognized.toLocaleString()} ج.م</span></div>
-                    <div className="border-t border-white/10 pt-3 flex justify-between"><span className="font-black">صافي الربح التشغيلي</span><span className={`font-black ${accountingReport.grossProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{accountingReport.grossProfit.toLocaleString()} ج.م</span></div>
+                    <h5 className="font-black text-lg">{t('finance.reportPnlTitle')}</h5>
+                    <div className="flex justify-between text-zinc-300"><span>{t('finance.reportCollectedRevenue')}</span><span className="font-black text-emerald-400">{accountingReport.revenueRecognized.toLocaleString(dateLocale)} {currency}</span></div>
+                    <div className="flex justify-between text-zinc-300"><span>{t('finance.reportPaidExpenses')}</span><span className="font-black text-rose-400">{accountingReport.expenseRecognized.toLocaleString(dateLocale)} {currency}</span></div>
+                    <div className="border-t border-white/10 pt-3 flex justify-between"><span className="font-black">{t('finance.reportOperatingProfit')}</span><span className={`font-black ${accountingReport.grossProfit >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{accountingReport.grossProfit.toLocaleString(dateLocale)} {currency}</span></div>
                   </div>
                   <div className="bg-slate-950/30 border border-white/10 rounded-2xl p-6 space-y-3">
-                    <h5 className="font-black text-lg">تقرير VAT</h5>
-                    <div className="flex justify-between text-zinc-300"><span>VAT مخرجات</span><span className="font-black text-amber-300">{vatSummary.outputVat.toLocaleString()} ج.م</span></div>
-                    <div className="flex justify-between text-zinc-300"><span>VAT مدخلات</span><span className="font-black text-indigo-300">{vatSummary.inputVat.toLocaleString()} ج.م</span></div>
-                    <div className="border-t border-white/10 pt-3 flex justify-between"><span className="font-black">صافي الضريبة</span><span className={`font-black ${vatSummary.netVatPayable >= 0 ? 'text-rose-300' : 'text-emerald-300'}`}>{vatSummary.netVatPayable.toLocaleString()} ج.م</span></div>
+                    <h5 className="font-black text-lg">{t('finance.reportVatTitle')}</h5>
+                    <div className="flex justify-between text-zinc-300"><span>{t('finance.vatOutput')}</span><span className="font-black text-amber-300">{vatSummary.outputVat.toLocaleString(dateLocale)} {currency}</span></div>
+                    <div className="flex justify-between text-zinc-300"><span>{t('finance.vatInput')}</span><span className="font-black text-indigo-300">{vatSummary.inputVat.toLocaleString(dateLocale)} {currency}</span></div>
+                    <div className="border-t border-white/10 pt-3 flex justify-between"><span className="font-black">{t('finance.netVat')}</span><span className={`font-black ${vatSummary.netVatPayable >= 0 ? 'text-rose-300' : 'text-emerald-300'}`}>{vatSummary.netVatPayable.toLocaleString(dateLocale)} {currency}</span></div>
                   </div>
                   <div className="bg-slate-950/30 border border-white/10 rounded-2xl p-6 space-y-3">
-                    <h5 className="font-black text-lg">ميزان مراجعة سريع</h5>
-                    <div className="flex justify-between text-zinc-300"><span>النقدية</span><span className="font-black">{stats.netCash.toLocaleString()} ج.م</span></div>
-                    <div className="flex justify-between text-zinc-300"><span>ذمم مدينة</span><span className="font-black text-amber-300">{accountingReport.receivables.toLocaleString()} ج.م</span></div>
-                    <div className="flex justify-between text-zinc-300"><span>ذمم دائنة</span><span className="font-black text-rose-300">{accountingReport.payables.toLocaleString()} ج.م</span></div>
-                    <div className="text-xs text-zinc-500 pt-2">نسخة تشغيلية لإدارة الشركة مع منظور محاسبي.</div>
+                    <h5 className="font-black text-lg">{t('finance.reportTrialBalanceQuick')}</h5>
+                    <div className="flex justify-between text-zinc-300"><span>{t('finance.cashAccount')}</span><span className="font-black">{stats.netCash.toLocaleString(dateLocale)} {currency}</span></div>
+                    <div className="flex justify-between text-zinc-300"><span>{t('finance.receivables')}</span><span className="font-black text-amber-300">{accountingReport.receivables.toLocaleString(dateLocale)} {currency}</span></div>
+                    <div className="flex justify-between text-zinc-300"><span>{t('finance.payables')}</span><span className="font-black text-rose-300">{accountingReport.payables.toLocaleString(dateLocale)} {currency}</span></div>
+                    <div className="text-xs text-zinc-500 pt-2">{t('finance.reportOperationalHint')}</div>
                   </div>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-slate-950/30 border border-white/10 rounded-2xl p-6">
-                    <h5 className="font-black text-lg mb-4">ميزان المراجعة</h5>
+                    <h5 className="font-black text-lg mb-4">{t('finance.trialBalanceTitle')}</h5>
                     <div className="overflow-x-auto max-h-72 overflow-y-auto rounded-xl border border-white/5">
                       <table className="w-full text-right min-w-[520px]">
                         <thead>
                           <tr className="bg-[#0B1020]/95">
-                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">الحساب</th>
-                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">مدين</th>
-                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">دائن</th>
-                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">الرصيد</th>
+                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colAccount')}</th>
+                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colDebit')}</th>
+                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colCredit')}</th>
+                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95 backdrop-blur">{t('finance.colBalance')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
                           {trialBalance.map((row, idx) => (
                             <tr key={row.account} className={`${idx % 2 === 0 ? 'bg-[#0E152B]/45' : 'bg-[#0B1224]/45'} hover:bg-[#1A2440]/45`}>
                               <td className="p-3 text-sm font-bold text-zinc-200">{row.account}</td>
-                              <td className="p-3 text-sm text-emerald-300">{row.debit.toLocaleString()}</td>
-                              <td className="p-3 text-sm text-rose-300">{row.credit.toLocaleString()}</td>
-                              <td className={`p-3 text-sm font-black ${row.balance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{row.balance.toLocaleString()}</td>
+                              <td className="p-3 text-sm text-emerald-300">{row.debit.toLocaleString(dateLocale)}</td>
+                              <td className="p-3 text-sm text-rose-300">{row.credit.toLocaleString(dateLocale)}</td>
+                              <td className={`p-3 text-sm font-black ${row.balance >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{row.balance.toLocaleString(dateLocale)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -2865,14 +2869,14 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                     </div>
                   </div>
                   <div className="bg-slate-950/30 border border-white/10 rounded-2xl p-6">
-                    <h5 className="font-black text-lg mb-4">ربحية مراكز التكلفة</h5>
+                    <h5 className="font-black text-lg mb-4">{t('finance.costCenterProfitTitle')}</h5>
                     <div className="space-y-2 max-h-72 overflow-auto pr-1">
                       {costCenterSummary.map(row => (
                         <div key={row.name} className="grid grid-cols-4 gap-2 text-sm border-b border-white/5 pb-2">
                           <span className="font-bold text-zinc-200">{row.name}</span>
-                          <span className="text-emerald-300">{row.revenue.toLocaleString()}</span>
-                          <span className="text-rose-300">{row.expense.toLocaleString()}</span>
-                          <span className={`${row.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{row.net.toLocaleString()}</span>
+                          <span className="text-emerald-300">{row.revenue.toLocaleString(dateLocale)}</span>
+                          <span className="text-rose-300">{row.expense.toLocaleString(dateLocale)}</span>
+                          <span className={`${row.net >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{row.net.toLocaleString(dateLocale)}</span>
                         </div>
                       ))}
                     </div>
@@ -2880,17 +2884,17 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                 </div>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                   <div className="bg-slate-950/30 border border-white/10 rounded-2xl p-6">
-                    <h5 className="font-black text-lg mb-4">Profitability Dashboard (حسب العميل)</h5>
-                    <p className="text-xs text-zinc-500 mb-3">تقدير ربحية لكل عميل بناءً على الفواتير وتوزيع مصروفات مركز التكلفة.</p>
+                    <h5 className="font-black text-lg mb-4">{t('finance.profitabilityByCustomer')}</h5>
+                    <p className="text-xs text-zinc-500 mb-3">{t('finance.profitabilityHint')}</p>
                     <div className="overflow-x-auto max-h-80 overflow-y-auto rounded-xl border border-white/5">
                       <table className="w-full min-w-[700px] text-right">
                         <thead>
                           <tr className="bg-[#0B1020]/95">
-                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95">العميل</th>
-                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95">الإيراد</th>
-                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95">تكلفة مخصصة</th>
-                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95">هامش ربحي</th>
-                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95">%</th>
+                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95">{t('finance.colCustomer')}</th>
+                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95">{t('finance.colRevenue')}</th>
+                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95">{t('finance.colAllocatedCost')}</th>
+                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95">{t('finance.colGrossProfit')}</th>
+                            <th className="sticky top-0 z-20 p-3 text-[10px] uppercase tracking-widest text-zinc-400 bg-[#0B1020]/95">{t('finance.colMarginPct')}</th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-white/5">
@@ -2905,9 +2909,9 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                                   row.customerName
                                 )}
                               </td>
-                              <td className="p-3 text-sm text-emerald-300">{row.revenue.toLocaleString()}</td>
-                              <td className="p-3 text-sm text-rose-300">{row.allocatedExpense.toLocaleString()}</td>
-                              <td className={`p-3 text-sm font-black ${row.grossProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{row.grossProfit.toLocaleString()}</td>
+                              <td className="p-3 text-sm text-emerald-300">{row.revenue.toLocaleString(dateLocale)}</td>
+                              <td className="p-3 text-sm text-rose-300">{row.allocatedExpense.toLocaleString(dateLocale)}</td>
+                              <td className={`p-3 text-sm font-black ${row.grossProfit >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>{row.grossProfit.toLocaleString(dateLocale)}</td>
                               <td className={`p-3 text-sm font-black ${row.marginPct >= 0 ? 'text-emerald-300' : 'text-rose-300'}`}>{row.marginPct.toFixed(1)}%</td>
                             </tr>
                           ))}
@@ -2916,23 +2920,23 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                     </div>
                   </div>
                   <div className="bg-slate-950/30 border border-white/10 rounded-2xl p-6">
-                    <h5 className="font-black text-lg mb-4">Expected Cashflow Calendar (30 يوم)</h5>
+                    <h5 className="font-black text-lg mb-4">{t('finance.cashflowCalendarTitle')}</h5>
                     <div className="grid grid-cols-2 gap-3 mb-3">
-                      <div className="bg-[#0B1020]/70 border border-white/10 rounded-xl p-3 text-sm">المتوقع 7 أيام: <span className="font-black text-emerald-300">{nextWeekCashflow.toLocaleString()} ج.م</span></div>
-                      <div className="bg-[#0B1020]/70 border border-white/10 rounded-xl p-3 text-sm">المتوقع 30 يوم: <span className="font-black text-indigo-300">{monthCashflow.toLocaleString()} ج.م</span></div>
+                      <div className="bg-[#0B1020]/70 border border-white/10 rounded-xl p-3 text-sm">{t('finance.expected7Days')}: <span className="font-black text-emerald-300">{nextWeekCashflow.toLocaleString(dateLocale)} {currency}</span></div>
+                      <div className="bg-[#0B1020]/70 border border-white/10 rounded-xl p-3 text-sm">{t('finance.expected30Days')}: <span className="font-black text-indigo-300">{monthCashflow.toLocaleString(dateLocale)} {currency}</span></div>
                     </div>
                     <div className="space-y-2 max-h-80 overflow-y-auto custom-scrollbar pr-1">
                       {cashflowCalendar.map((row) => (
                         <div key={`cf-${row.date}`} className="bg-[#0B1020]/70 border border-white/10 rounded-xl p-3 flex items-center justify-between text-sm">
                           <div>
-                            <p className="font-bold text-zinc-200">{new Date(row.date).toLocaleDateString('ar-EG', { weekday: 'short', day: 'numeric', month: 'short' })}</p>
-                            <p className="text-[11px] text-zinc-500">{row.openInvoices} فواتير متوقعة التحصيل</p>
+                            <p className="font-bold text-zinc-200">{new Date(row.date).toLocaleDateString(dateLocale, { weekday: 'short', day: 'numeric', month: 'short' })}</p>
+                            <p className="text-[11px] text-zinc-500">{t('finance.expectedInvoicesCount', { count: row.openInvoices })}</p>
                           </div>
-                          <p className="font-black text-emerald-300">{row.expectedCollections.toLocaleString()} ج.م</p>
+                          <p className="font-black text-emerald-300">{row.expectedCollections.toLocaleString(dateLocale)} {currency}</p>
                         </div>
                       ))}
                       {cashflowCalendar.length === 0 && (
-                        <p className="text-sm text-zinc-500 text-center py-8">لا توجد أقساط متوقعة خلال 30 يوم.</p>
+                        <p className="text-sm text-zinc-500 text-center py-8">{t('finance.noCashflow30Days')}</p>
                       )}
                     </div>
                   </div>
@@ -2942,12 +2946,12 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             {activeFinanceTab === 'custody' && (
               <div className="p-8 space-y-8">
                 <div className="bg-slate-950/40 border border-white/10 rounded-2xl p-6 space-y-4">
-                  <h5 className="font-black text-lg">تكويد فئات المصروف (لترحيل قيود التسوية)</h5>
-                  <p className="text-xs text-zinc-500">يحدد المحاسب أي حساب في الدليل يُستخدم لكل فئة عند اعتماد المالك لتسوية العهدة.</p>
+                  <h5 className="font-black text-lg">{t('finance.custodyCodingTitle')}</h5>
+                  <p className="text-xs text-zinc-500">{t('finance.custodyCodingHint')}</p>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     {(['رواتب', 'إيجارات', 'معدات', 'تسويق', 'تشغيل', 'ضيافة', 'نثريات', 'أخرى'] as const).map((cat) => (
                       <div key={cat} className="flex items-center gap-2 bg-[#0B1020] border border-white/10 rounded-xl px-3 py-2">
-                        <span className="text-xs text-zinc-400 w-24">{cat}</span>
+                        <span className="text-xs text-zinc-400 w-24">{getExpenseCategoryLabel(cat, t)}</span>
                         <select
                           className="flex-1 bg-[#0F1528] border border-white/10 rounded-lg px-2 py-1 text-xs"
                           value={custodyAccountByCategory[cat] || '5110'}
@@ -2962,11 +2966,11 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                   </div>
                 </div>
                 <div className="bg-slate-950/40 border border-white/10 rounded-2xl p-6 space-y-4">
-                  <h5 className="font-black text-lg">إنشاء عهدة جديدة</h5>
+                  <h5 className="font-black text-lg">{t('finance.createCustodyTitle')}</h5>
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                     <input
                       className="bg-[#0B1020] border border-white/10 rounded-xl px-3 py-2 text-sm"
-                      placeholder="عنوان العهدة"
+                      placeholder={t('finance.custodyTitlePh')}
                       value={custodyForm.title}
                       onChange={(e) => setCustodyForm((p) => ({ ...p, title: e.target.value }))}
                     />
@@ -2974,7 +2978,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       type="number"
                       min={0}
                       className="bg-[#0B1020] border border-white/10 rounded-xl px-3 py-2 text-sm"
-                      placeholder="المبلغ"
+                      placeholder={t('finance.custodyAmountPh')}
                       value={custodyForm.totalAmount}
                       onChange={(e) => setCustodyForm((p) => ({ ...p, totalAmount: e.target.value }))}
                     />
@@ -2983,14 +2987,14 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       value={custodyForm.productionManagerId}
                       onChange={(e) => setCustodyForm((p) => ({ ...p, productionManagerId: e.target.value }))}
                     >
-                      <option value="">— مدير الإنتاج —</option>
+                      <option value="">{t('finance.selectProductionManager')}</option>
                       {users.filter((u) => u.role === 'مدير إنتاج').map((u) => (
                         <option key={u.id} value={u.id}>{u.name}</option>
                       ))}
                     </select>
                     <textarea
                       className="bg-[#0B1020] border border-white/10 rounded-xl px-3 py-2 text-sm md:col-span-2 min-h-[80px]"
-                      placeholder="تفاصيل العهدة"
+                      placeholder={t('finance.custodyDetailsPh')}
                       value={custodyForm.description}
                       onChange={(e) => setCustodyForm((p) => ({ ...p, description: e.target.value }))}
                     />
@@ -3006,28 +3010,28 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                         productionManagerId: custodyForm.productionManagerId,
                       });
                       if (ok) {
-                        toast.success('تم إنشاء العهدة كمسودة');
+                        toast.success(t('finance.toastCustodyDraftCreated'));
                         setCustodyForm({ title: '', description: '', totalAmount: '', productionManagerId: '' });
-                      } else toast.error('تأكد من العنوان والمبلغ ومدير الإنتاج');
+                      } else toast.error(t('finance.toastCustodyDraftFailed'));
                       })();
                     }}
                     className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 text-sm font-black"
                   >
-                    حفظ مسودة
+                    {t('finance.saveCustodyDraft')}
                   </button>
                 </div>
                 <div className="space-y-3">
-                  <h5 className="font-black text-lg">سجل العهد</h5>
-                  {custodyFunds.length === 0 && <p className="text-sm text-zinc-500">لا توجد عهود بعد.</p>}
+                  <h5 className="font-black text-lg">{t('finance.custodyLogTitle')}</h5>
+                  {custodyFunds.length === 0 && <p className="text-sm text-zinc-500">{t('finance.noCustodyYet')}</p>}
                   {custodyFunds.map((cf) => (
                     <div key={cf.id} className="bg-[#0F1528]/80 border border-white/10 rounded-2xl p-4 flex flex-col gap-3 w-full">
                       <div className="flex flex-wrap items-center justify-between gap-3 w-full">
                       <div>
                         <p className="font-bold text-white">{cf.title}</p>
-                        <p className="text-xs text-zinc-400">{cf.totalAmount.toLocaleString()} ج.م — {cf.productionManagerName} — {cf.status}</p>
-                        {cf.journalEntryPaymentId && <p className="text-[10px] text-teal-400 mt-1">قيد صرف: {cf.journalEntryPaymentId}</p>}
+                        <p className="text-xs text-zinc-400">{t('finance.custodyAmountSummary', { amount: cf.totalAmount.toLocaleString(dateLocale), currency, manager: cf.productionManagerName, status: getCustodyStatusLabel(cf.status, t) })}</p>
+                        {cf.journalEntryPaymentId && <p className="text-[10px] text-teal-400 mt-1">{t('finance.custodyPaymentJournal', { id: cf.journalEntryPaymentId })}</p>}
                         {(cf.journalEntrySettlementId || cf.journalEntryId) && (
-                          <p className="text-[10px] text-emerald-400 mt-1">قيد إقفال: {cf.journalEntrySettlementId || cf.journalEntryId}</p>
+                          <p className="text-[10px] text-emerald-400 mt-1">{t('finance.custodySettlementJournal', { id: cf.journalEntrySettlementId || cf.journalEntryId })}</p>
                         )}
                       </div>
                       <div className="flex flex-wrap gap-2">
@@ -3036,12 +3040,12 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                             type="button"
                             onClick={async () => {
                               const ok = await submitCustodyDraftToOwner(cf.id);
-                              if (ok) toast.success('تم الإرسال للمالك لاعتماد الطلب');
-                              else toast.error('تعذر الإرسال');
+                              if (ok) toast.success(t('finance.toastCustodySubmitted'));
+                              else toast.error(t('finance.toastCustodySubmitFailed'));
                             }}
                             className="px-3 py-1.5 rounded-xl bg-[#7C6BFF] text-white text-xs font-black"
                           >
-                            إرسال للمالك
+                            {t('finance.submitToOwner')}
                           </button>
                         )}
                         {cf.status === 'بانتظار_دفع_محاسب' && (
@@ -3050,23 +3054,23 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                               type="button"
                               onClick={async () => {
                                 const ok = await accountantRecordCustodyPayment(cf.id, 'كاش');
-                                if (ok) toast.success('تم تسجيل الدفع كاش وقيد الصرف');
-                                else toast.error('تعذر — تحقق من الحسابات أو إغلاق الشهر');
+                                if (ok) toast.success(t('finance.toastCustodyPaidCash'));
+                                else toast.error(t('finance.toastCustodyPayFailed'));
                               }}
                               className="px-3 py-1.5 rounded-xl bg-teal-500 text-slate-950 text-xs font-black"
                             >
-                              دفع كاش + قيد صرف
+                              {t('finance.payCashWithJournal')}
                             </button>
                             <button
                               type="button"
                               onClick={async () => {
                                 const ok = await accountantRecordCustodyPayment(cf.id, 'تحويل');
-                                if (ok) toast.success('تم تسجيل الدفع بتحويل وقيد الصرف');
-                                else toast.error('تعذر — تحقق من الحسابات أو إغلاق الشهر');
+                                if (ok) toast.success(t('finance.toastCustodyPaidTransfer'));
+                                else toast.error(t('finance.toastCustodyPayFailed'));
                               }}
                               className="px-3 py-1.5 rounded-xl bg-indigo-500 text-white text-xs font-black"
                             >
-                              دفع تحويل + قيد صرف
+                              {t('finance.payTransferWithJournal')}
                             </button>
                           </>
                         )}
@@ -3076,23 +3080,23 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                               type="button"
                               onClick={async () => {
                                 const ok = await accountantApproveCustodySettlement(cf.id);
-                                if (ok) toast.success('تم إقفال العهدة وترحيل قيد التسوية');
-                                else toast.error('تعذر — تحقق من البيانات أو إغلاق الشهر');
+                                if (ok) toast.success(t('finance.toastCustodySettlementApproved'));
+                                else toast.error(t('finance.toastCustodySettlementFailed'));
                               }}
                               className="px-3 py-1.5 rounded-xl bg-emerald-500 text-slate-950 text-xs font-black"
                             >
-                              اعتماد التسوية وقيد الإقفال
+                              {t('finance.approveSettlement')}
                             </button>
                             <button
                               type="button"
                               onClick={async () => {
                                 const ok = await accountantRejectCustodySettlement(cf.id);
-                                if (ok) toast.info('تم إرجاع العهدة لتعديل البنود');
-                                else toast.error('تعذر');
+                                if (ok) toast.info(t('finance.toastCustodyReturned'));
+                                else toast.error(t('finance.toastCustodyReturnFailed'));
                               }}
                               className="px-3 py-1.5 rounded-xl bg-rose-500/80 text-white text-xs font-black"
                             >
-                              رفض وإرجاع
+                              {t('finance.rejectReturn')}
                             </button>
                           </>
                         )}
@@ -3100,7 +3104,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       </div>
                       {cf.status === 'تسوية_بانتظار_محاسب' && (
                         <div className="w-full pt-2 border-t border-white/10 space-y-2">
-                          <p className="text-[11px] font-black text-amber-200/95">مراجعة بنود التسوية ومستندات مدير الإنتاج قبل اعتماد قيد الإقفال ترحيلياً إلى القيود:</p>
+                          <p className="text-[11px] font-black text-amber-200/95">{t('finance.custodyReviewHint')}</p>
                           <CustodySettlementReviewBlock lines={cf.spendLines} />
                         </div>
                       )}
@@ -3116,14 +3120,14 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
           <div className="bg-slate-900/40 border border-slate-800 p-8 rounded-[3rem]">
             <h4 className="font-black text-lg mb-6 flex items-center gap-3">
               <TrendingUp className="w-5 h-5 text-indigo-500" />
-              التدفق النقدي الشهري
+              {t('finance.monthlyCashflowTitle')}
             </h4>
             <div className="h-48">
               <ResponsiveContainer width="100%" height="100%">
                 <AreaChart data={[
-                  { name: 'يناير', income: 400000, expense: 190000 },
-                  { name: 'فبراير', income: 650000, expense: 230000 },
-                  { name: 'مارس', income: stats.receivablePaid, expense: stats.expensesPaid },
+                  { name: new Date(2024, 0, 1).toLocaleDateString(dateLocale, { month: 'long' }), income: 400000, expense: 190000 },
+                  { name: new Date(2024, 1, 1).toLocaleDateString(dateLocale, { month: 'long' }), income: 650000, expense: 230000 },
+                  { name: new Date(2024, 2, 1).toLocaleDateString(dateLocale, { month: 'long' }), income: stats.receivablePaid, expense: stats.expensesPaid },
                 ]}>
                   <defs>
                     <linearGradient id="colorIncome" x1="0" y1="0" x2="0" y2="1">
@@ -3143,12 +3147,12 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             </div>
             <div className="mt-6 flex justify-between items-center pt-6 border-t border-slate-800">
                <div>
-                 <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">ذمم متأخرة</p>
-                 <p className="text-xl font-black text-rose-400">{stats.receivableLate.toLocaleString()} ج.م</p>
+                 <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">{t('finance.overdueReceivables')}</p>
+                 <p className="text-xl font-black text-rose-400">{stats.receivableLate.toLocaleString(dateLocale)} {currency}</p>
                </div>
                <div className="text-left">
-                 <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">صافي التدفق</p>
-                 <p className={`text-xl font-black ${stats.netCash >= 0 ? 'text-emerald-500' : 'text-rose-400'}`}>{stats.netCash.toLocaleString()} ج.م</p>
+                 <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">{t('finance.netCashflow')}</p>
+                 <p className={`text-xl font-black ${stats.netCash >= 0 ? 'text-emerald-500' : 'text-rose-400'}`}>{stats.netCash.toLocaleString(dateLocale)} {currency}</p>
                </div>
             </div>
           </div>
@@ -3156,13 +3160,13 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
           <div className="bg-indigo-600 p-8 rounded-[3rem] text-white shadow-2xl shadow-indigo-600/20 relative overflow-hidden group">
             <div className="absolute top-[-20%] right-[-20%] w-40 h-40 bg-white/10 rounded-full blur-3xl group-hover:scale-150 transition-transform duration-700" />
             <div className="relative z-10">
-              <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2">تنبيهات الحسابات</p>
-              <h5 className="text-xl font-black mb-4">ذمم منتظرة: {stats.receivablePending.toLocaleString()} ج.م | مصروفات منتظرة: {stats.expensesPending.toLocaleString()} ج.م</h5>
+              <p className="text-xs font-black uppercase tracking-widest opacity-80 mb-2">{t('finance.accountAlertsTitle')}</p>
+              <h5 className="text-xl font-black mb-4">{t('finance.accountAlertsBody', { receivable: stats.receivablePending.toLocaleString(dateLocale), expense: stats.expensesPending.toLocaleString(dateLocale), currency })}</h5>
               <button
-                onClick={() => toast.info('راجع تبويبات الفواتير والمصروفات وصدّر التقرير CSV عند الحاجة')}
+                onClick={() => toast.info(t('finance.reviewRecordsToast'))}
                 className="w-full bg-white text-indigo-600 py-3 rounded-2xl font-black text-sm hover:bg-slate-100 transition-all shadow-xl"
               >
-                مراجعة السجلات
+                {t('finance.reviewRecords')}
               </button>
             </div>
           </div>
@@ -3173,7 +3177,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[220] flex items-center justify-center p-6">
           <div className="bg-slate-900 border border-slate-800 w-full max-w-xl rounded-[3rem] p-8">
             <div className="flex items-center justify-between mb-8">
-              <h3 className="text-2xl font-black">إصدار فاتورة جديدة</h3>
+              <h3 className="text-2xl font-black">{t('finance.createInvoiceTitle')}</h3>
               <button
                 onClick={() => setIsCreateInvoiceOpen(false)}
                 className="p-2 hover:bg-slate-800 rounded-xl transition-colors"
@@ -3192,7 +3196,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                   <span className="truncate">
                     {invoiceForm.leadId
                       ? `${leads.find(l => l.id === invoiceForm.leadId)?.name || ''} - ${leads.find(l => l.id === invoiceForm.leadId)?.company || ''}`
-                      : 'اختياري: ربط بليد موجود'}
+                      : t('finance.optionalLeadLink')}
                   </span>
                   <ChevronRight className={`w-4 h-4 text-zinc-400 transition-transform ${isLeadPickerOpen ? 'rotate-[-90deg]' : 'rotate-90'}`} />
                 </button>
@@ -3206,7 +3210,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                       }}
                       className="w-full text-right px-4 py-2.5 text-sm text-zinc-200 hover:bg-white/10"
                     >
-                      اختياري: ربط بليد موجود
+                      {t('finance.optionalLeadLink')}
                     </button>
                     {leads.map((lead) => (
                       <button
@@ -3236,16 +3240,16 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                 onChange={(e) => setInvoiceForm(prev => ({ ...prev, status: e.target.value as Invoice['status'] }))}
                 className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm text-zinc-100 [color-scheme:dark]"
               >
-                <option value="قيد الانتظار">قيد الانتظار</option>
-                <option value="مدفوع">مدفوع</option>
-                <option value="متأخر">متأخر</option>
+                <option value="قيد الانتظار">{getInvoiceStatusLabel('قيد الانتظار', t)}</option>
+                <option value="مدفوع">{getInvoiceStatusLabel('مدفوع', t)}</option>
+                <option value="متأخر">{getInvoiceStatusLabel('متأخر', t)}</option>
               </select>
 
               <input
                 value={invoiceForm.customerName}
                 onChange={(e) => setInvoiceForm(prev => ({ ...prev, customerName: e.target.value }))}
                 className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm md:col-span-2"
-                placeholder="اسم العميل"
+                placeholder={t('finance.customerNamePh')}
               />
 
               <input
@@ -3254,7 +3258,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                 value={invoiceForm.amount}
                 onChange={(e) => setInvoiceForm(prev => ({ ...prev, amount: e.target.value }))}
                 className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm"
-                placeholder="المبلغ الأساسي"
+                placeholder={t('finance.baseAmountPh')}
               />
               <input
                 type="number"
@@ -3263,13 +3267,13 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                 value={invoiceForm.vatRate}
                 onChange={(e) => setInvoiceForm(prev => ({ ...prev, vatRate: e.target.value }))}
                 className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm"
-                placeholder="نسبة VAT %"
+                placeholder={t('finance.vatRatePh')}
               />
               <input
                 value={invoiceForm.costCenter}
                 onChange={(e) => setInvoiceForm(prev => ({ ...prev, costCenter: e.target.value }))}
                 className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm md:col-span-2"
-                placeholder="مركز التكلفة (مثال: إعلانات)"
+                placeholder={t('finance.costCenterPh')}
               />
             </div>
 
@@ -3278,13 +3282,13 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                 onClick={handleCreateInvoice}
                 className="flex-1 bg-emerald-500 text-slate-950 py-3 rounded-2xl font-black"
               >
-                حفظ الفاتورة
+                {t('finance.saveInvoice')}
               </button>
               <button
                 onClick={() => setIsCreateInvoiceOpen(false)}
                 className="flex-1 bg-slate-800 border border-slate-700 py-3 rounded-2xl font-black"
               >
-                إلغاء
+                {t('common.cancel')}
               </button>
             </div>
           </div>
@@ -3295,31 +3299,33 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
         <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[220] flex items-center justify-center p-6">
           <div className="bg-slate-900 border border-slate-800 w-full max-w-xl rounded-[3rem] p-8">
             <div className="flex items-center justify-between mb-8">
-              <h3 className="text-2xl font-black">تسجيل مصروف جديد</h3>
+              <h3 className="text-2xl font-black">{t('finance.createExpenseTitle')}</h3>
               <button onClick={() => setIsCreateExpenseOpen(false)} className="p-2 hover:bg-slate-800 rounded-xl transition-colors">
                 <X className="w-6 h-6" />
               </button>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <input value={expenseForm.title} onChange={(e) => setExpenseForm(prev => ({ ...prev, title: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm md:col-span-2" placeholder="وصف المصروف" />
+              <input value={expenseForm.title} onChange={(e) => setExpenseForm(prev => ({ ...prev, title: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm md:col-span-2" placeholder={t('finance.expenseDescPh')} />
               <select value={expenseForm.category} onChange={(e) => setExpenseForm(prev => ({ ...prev, category: e.target.value as any }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm">
-                <option value="تشغيل">تشغيل</option><option value="رواتب">رواتب</option><option value="إيجارات">إيجارات</option><option value="معدات">معدات</option><option value="تسويق">تسويق</option><option value="ضيافة">ضيافة</option><option value="نثريات">نثريات</option><option value="أخرى">أخرى</option>
+                {(['تشغيل', 'رواتب', 'إيجارات', 'معدات', 'تسويق', 'ضيافة', 'نثريات', 'أخرى'] as const).map((cat) => (
+                  <option key={cat} value={cat}>{getExpenseCategoryLabel(cat, t)}</option>
+                ))}
               </select>
               <select value={expenseForm.status} onChange={(e) => setExpenseForm(prev => ({ ...prev, status: e.target.value as any }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm">
-                <option value="قيد الانتظار">قيد الانتظار</option><option value="مدفوع">مدفوع</option>
+                <option value="قيد الانتظار">{getExpenseStatusLabel('قيد الانتظار', t)}</option><option value="مدفوع">{getExpenseStatusLabel('مدفوع', t)}</option>
               </select>
-              <input type="number" min={0} max={100} value={expenseForm.vatRate} onChange={(e) => setExpenseForm(prev => ({ ...prev, vatRate: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm" placeholder="نسبة VAT %" />
-              <input value={expenseForm.costCenter} onChange={(e) => setExpenseForm(prev => ({ ...prev, costCenter: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm" placeholder="مركز التكلفة" />
-              <input value={expenseForm.vendor} onChange={(e) => setExpenseForm(prev => ({ ...prev, vendor: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm" placeholder="المورد (اختياري)" />
-              <input type="number" min={1} value={expenseForm.amount} onChange={(e) => setExpenseForm(prev => ({ ...prev, amount: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm" placeholder="المبلغ" />
-              <textarea value={expenseForm.note} onChange={(e) => setExpenseForm(prev => ({ ...prev, note: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm md:col-span-2" placeholder="ملاحظات (اختياري)" />
+              <input type="number" min={0} max={100} value={expenseForm.vatRate} onChange={(e) => setExpenseForm(prev => ({ ...prev, vatRate: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm" placeholder={t('finance.vatRatePh')} />
+              <input value={expenseForm.costCenter} onChange={(e) => setExpenseForm(prev => ({ ...prev, costCenter: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm" placeholder={t('finance.costCenterShortPh')} />
+              <input value={expenseForm.vendor} onChange={(e) => setExpenseForm(prev => ({ ...prev, vendor: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm" placeholder={t('finance.vendorPh')} />
+              <input type="number" min={1} value={expenseForm.amount} onChange={(e) => setExpenseForm(prev => ({ ...prev, amount: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm" placeholder={t('finance.amountPh')} />
+              <textarea value={expenseForm.note} onChange={(e) => setExpenseForm(prev => ({ ...prev, note: e.target.value }))} className="bg-slate-800 border border-slate-700 rounded-2xl px-4 py-3 text-sm md:col-span-2" placeholder={t('finance.notesOptionalPh')} />
               <div className="md:col-span-2 text-[11px] text-zinc-400">
-                الكود المحاسبي المتوقع: <span className="font-mono text-[#A99FFF]">{expenseCategoryCodeMap[expenseForm.category] || 'EXP-OTH'}-{toFour(expenses.length + 1)}</span>
+                {t('finance.expectedAccountingCode')} <span className="font-mono text-[#A99FFF]">{expenseCategoryCodeMap[expenseForm.category] || 'EXP-OTH'}-{toFour(expenses.length + 1)}</span>
               </div>
             </div>
             <div className="flex gap-3 mt-8">
-              <button onClick={handleCreateExpense} className="flex-1 bg-rose-500 text-white py-3 rounded-2xl font-black">حفظ المصروف</button>
-              <button onClick={() => setIsCreateExpenseOpen(false)} className="flex-1 bg-slate-800 border border-slate-700 py-3 rounded-2xl font-black">إلغاء</button>
+              <button onClick={handleCreateExpense} className="flex-1 bg-rose-500 text-white py-3 rounded-2xl font-black">{t('finance.saveExpense')}</button>
+              <button onClick={() => setIsCreateExpenseOpen(false)} className="flex-1 bg-slate-800 border border-slate-700 py-3 rounded-2xl font-black">{t('common.cancel')}</button>
             </div>
           </div>
         </div>
@@ -3330,8 +3336,8 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
           <div className="bg-slate-900 border border-slate-800 w-full max-w-3xl rounded-[2.5rem] p-6">
             <div className="flex items-center justify-between gap-3 mb-5">
               <div>
-                <h3 className="text-xl font-black">تفاصيل الفاتورة {invoiceDetails.id}</h3>
-                <p className="text-xs text-zinc-400 mt-1">{invoiceDetails.customerName} • {new Date(invoiceDetails.date).toLocaleDateString('ar-EG')}</p>
+                <h3 className="text-xl font-black">{t('finance.invoiceDetailsTitle', { id: invoiceDetails.id })}</h3>
+                <p className="text-xs text-zinc-400 mt-1">{invoiceDetails.customerName} • {new Date(invoiceDetails.date).toLocaleDateString(dateLocale)}</p>
               </div>
               <button onClick={() => setInvoiceDetailsId(null)} className="p-2 hover:bg-slate-800 rounded-xl transition-colors">
                 <X className="w-5 h-5" />
@@ -3339,48 +3345,48 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             </div>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
               <div className="bg-[#0B1020]/70 border border-white/10 rounded-xl p-3">
-                <p className="text-[11px] text-zinc-400">إجمالي الفاتورة</p>
-                <p className="font-black text-emerald-300">{(invoiceDetails.totalAmount ?? invoiceDetails.amount).toLocaleString()} ج.م</p>
+                <p className="text-[11px] text-zinc-400">{t('finance.invoiceTotal')}</p>
+                <p className="font-black text-emerald-300">{(invoiceDetails.totalAmount ?? invoiceDetails.amount).toLocaleString(dateLocale)} {currency}</p>
               </div>
               <div className="bg-[#0B1020]/70 border border-white/10 rounded-xl p-3">
-                <p className="text-[11px] text-zinc-400">المحصل</p>
-                <p className="font-black text-emerald-400">{(invoiceDetails.paidAmount ?? 0).toLocaleString()} ج.م</p>
+                <p className="text-[11px] text-zinc-400">{t('finance.collected')}</p>
+                <p className="font-black text-emerald-400">{(invoiceDetails.paidAmount ?? 0).toLocaleString(dateLocale)} {currency}</p>
               </div>
               <div className="bg-[#0B1020]/70 border border-white/10 rounded-xl p-3">
-                <p className="text-[11px] text-zinc-400">المتبقي</p>
-                <p className="font-black text-amber-300">{(invoiceDetails.remainingAmount ?? 0).toLocaleString()} ج.م</p>
+                <p className="text-[11px] text-zinc-400">{t('finance.remaining')}</p>
+                <p className="font-black text-amber-300">{(invoiceDetails.remainingAmount ?? 0).toLocaleString(dateLocale)} {currency}</p>
               </div>
               <div className="bg-[#0B1020]/70 border border-white/10 rounded-xl p-3">
-                <p className="text-[11px] text-zinc-400">موعد القسط القادم</p>
-                <p className="font-black text-zinc-200">{invoiceDetails.nextDueDate ? new Date(invoiceDetails.nextDueDate).toLocaleDateString('ar-EG') : '—'}</p>
+                <p className="text-[11px] text-zinc-400">{t('finance.nextInstallmentDue')}</p>
+                <p className="font-black text-zinc-200">{invoiceDetails.nextDueDate ? new Date(invoiceDetails.nextDueDate).toLocaleDateString(dateLocale) : '—'}</p>
               </div>
             </div>
             <div className="bg-[#0B1020]/60 border border-white/10 rounded-2xl overflow-hidden">
               <div className="px-4 py-3 border-b border-white/10 flex items-center justify-between">
-                <h4 className="font-black text-sm">سجل الدفعات والتحصيل</h4>
-                <span className="text-xs text-zinc-400">{(invoiceDetails.collections || []).length} حركة</span>
+                <h4 className="font-black text-sm">{t('finance.collectionsTitle')}</h4>
+                <span className="text-xs text-zinc-400">{t('finance.collectionsCount', { count: (invoiceDetails.collections || []).length })}</span>
               </div>
               {(invoiceDetails.collections || []).length === 0 ? (
-                <p className="p-4 text-sm text-zinc-400">لا توجد دفعات مسجلة بعد.</p>
+                <p className="p-4 text-sm text-zinc-400">{t('finance.noCollectionsYet')}</p>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-right">
                     <thead>
                       <tr className="text-[10px] uppercase text-zinc-500">
-                        <th className="px-4 py-3">التاريخ</th>
-                        <th className="px-4 py-3">الطريقة</th>
-                        <th className="px-4 py-3">المبلغ</th>
-                        <th className="px-4 py-3">رقم القيد</th>
-                        <th className="px-4 py-3">ملاحظة</th>
-                        <th className="px-4 py-3">فتح القيد</th>
+                        <th className="px-4 py-3">{t('finance.colDate')}</th>
+                        <th className="px-4 py-3">{t('finance.colMethod')}</th>
+                        <th className="px-4 py-3">{t('finance.colAmount')}</th>
+                        <th className="px-4 py-3">{t('finance.colJournalId')}</th>
+                        <th className="px-4 py-3">{t('finance.colNote')}</th>
+                        <th className="px-4 py-3">{t('finance.openJournal')}</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-white/5">
                       {(invoiceDetails.collections || []).map((c) => (
                         <tr key={c.id} className="text-sm">
-                          <td className="px-4 py-3 text-zinc-300">{new Date(c.date).toLocaleString('ar-EG')}</td>
-                          <td className="px-4 py-3 text-indigo-300">{c.method}</td>
-                          <td className="px-4 py-3 font-black text-emerald-300">{c.amount.toLocaleString()} ج.م</td>
+                          <td className="px-4 py-3 text-zinc-300">{new Date(c.date).toLocaleString(dateLocale)}</td>
+                          <td className="px-4 py-3 text-indigo-300">{getPaymentMethodLabel(c.method, t)}</td>
+                          <td className="px-4 py-3 font-black text-emerald-300">{c.amount.toLocaleString(dateLocale)} {currency}</td>
                           <td className="px-4 py-3 font-mono text-[11px] text-zinc-400">{c.journalEntryId || '—'}</td>
                           <td className="px-4 py-3 text-zinc-400">{c.note || '—'}</td>
                           <td className="px-4 py-3">
@@ -3390,11 +3396,11 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                                   setJournalFocusId(c.journalEntryId || null);
                                   setActiveFinanceTab('journals');
                                   setInvoiceDetailsId(null);
-                                  toast.success(`تم فتح القيد ${c.journalEntryId}`);
+                                  toast.success(t('finance.toastJournalOpened', { id: c.journalEntryId }));
                                 }}
                                 className="px-3 py-1.5 rounded-lg text-xs font-black bg-indigo-500/20 text-indigo-200 border border-indigo-400/30 hover:bg-indigo-500/30"
                               >
-                                عرض القيد
+                                {t('finance.openJournal')}
                               </button>
                             ) : (
                               <span className="text-zinc-500 text-xs">—</span>
@@ -3423,6 +3429,8 @@ const PriceQuoteSubmitModal = ({
   open: boolean;
   onClose: () => void;
 }) => {
+  const { t } = useTranslation();
+  const { dir } = useAppDirection();
   const { addPriceQuote, accountingPolicy, users } = useData();
   const [title, setTitle] = useState('');
   const [amount, setAmount] = useState('');
@@ -3459,14 +3467,14 @@ const PriceQuoteSubmitModal = ({
   const selectedProdUser = productionUsers.find((u) => u.id === productionUserId);
 
   const submit = async () => {
-    if (!title.trim()) { toast.error('أدخل عنوان العرض'); return; }
+    if (!title.trim()) { toast.error(t('quoteModal.toastQuoteTitleRequired')); return; }
     if (!productionUserId) {
-      toast.error('اختر مدير الإنتاج المسؤول عن التسعير');
+      toast.error(t('quoteModal.toastProductionManagerRequired'));
       return;
     }
     const amt = 0;
     const vr = Number(vatRate);
-    if (Number.isNaN(vr) || vr < 0 || vr > 100) { toast.error('نسبة ضريبة غير صحيحة'); return; }
+    if (Number.isNaN(vr) || vr < 0 || vr > 100) { toast.error(t('quoteModal.toastInvalidVat')); return; }
     let ok = false;
     try {
       ok = await addPriceQuote({
@@ -3481,77 +3489,77 @@ const PriceQuoteSubmitModal = ({
         productionAssignedName: selectedProdUser?.name,
       });
     } catch (err) {
-      toast.error(`تعذر الإرسال: ${err instanceof Error ? err.message : String(err)}`);
+      toast.error(t('quoteModal.toastQuoteSendError', { error: err instanceof Error ? err.message : String(err) }));
       return;
     }
-    if (!ok) { toast.error('تعذر الإرسال: تحقق من البيانات ومدير الإنتاج'); return; }
-    toast.success(`تم إرسال طلب التسعير إلى ${selectedProdUser?.name} — ثم للمالك للاعتماد، وبعدها يعود لك لتقديمه للعميل`);
+    if (!ok) { toast.error(t('quoteModal.toastQuoteSendFailed')); return; }
+    toast.success(t('quoteModal.toastQuoteSent', { name: selectedProdUser?.name || '' }));
     onClose();
   };
 
   return (
-    <div className="fixed inset-0 z-[240] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" dir="rtl">
+    <div className="fixed inset-0 z-[240] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" dir={dir}>
       <div className="w-full max-w-lg rounded-3xl border border-white/15 bg-[#0B1020] shadow-2xl p-6 space-y-4">
         <div>
-          <p className="text-xs text-zinc-500">طلب عرض سعر: مدير الإنتاج → المالك → أنت تقدّمه للعميل → أمر شغل للإنتاج عند الموافقة</p>
+          <p className="text-xs text-zinc-500">{t('quoteModal.pipelineHint')}</p>
           <h3 className="text-lg font-black text-white mt-1">{lead.name} / {lead.company}</h3>
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-zinc-400 mb-1">عنوان العرض <span className="text-rose-400">*</span></label>
-          <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm" placeholder="مثال: تغطية حفل شركة..." />
+          <label className="block text-xs font-bold text-zinc-400 mb-1">{t('quoteModal.quoteTitleLabel')} <span className="text-rose-400">*</span></label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm" placeholder={t('quoteModal.quoteTitlePh')} />
         </div>
 
         {productionUsers.length > 0 ? (
           <div>
             <label className="block text-xs font-bold text-zinc-400 mb-1">
-              مدير الإنتاج للتسعير <span className="text-rose-400">*</span>
+              {t('quoteModal.productionManagerLabel')} <span className="text-rose-400">*</span>
             </label>
             <select
               value={productionUserId}
               onChange={(e) => setProductionUserId(e.target.value)}
               className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm"
             >
-              <option value="">— اختر مدير إنتاج —</option>
+              <option value="">{t('quoteModal.selectProductionManager')}</option>
               {productionUsers.map((u) => (
-                <option key={u.id} value={u.id}>{u.name} ({u.role})</option>
+                <option key={u.id} value={u.id}>{u.name} ({getRoleLabel(u.role, t)})</option>
               ))}
             </select>
             {selectedProdUser ? (
               <p className="text-[11px] text-amber-300/80 mt-1">
-                {selectedProdUser.name} يُسعّر → المالك يعتمد ويحدد الدفع → تعود لك نسخة معتمدة للعميل.
+                {t('quoteModal.productionManagerHint', { name: selectedProdUser.name })}
               </p>
             ) : null}
           </div>
         ) : (
           <p className="text-sm text-rose-300 bg-rose-500/10 border border-rose-500/30 rounded-xl px-3 py-2">
-            لا يوجد مدير إنتاج مسجل — أضف مستخدم «مدير إنتاج» من الإعدادات أولاً.
+            {t('quoteModal.noProductionManager')}
           </p>
         )}
 
         <div>
-          <label className="block text-xs font-bold text-zinc-400 mb-1">مركز التكلفة</label>
+          <label className="block text-xs font-bold text-zinc-400 mb-1">{t('quoteModal.costCenterLabel')}</label>
           <select value={costCenter} onChange={(e) => setCostCenter(e.target.value)} className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm">
             {(allowedCC.length > 0 ? allowedCC : ['عام']).map((cc) => (
-              <option key={cc} value={cc}>{cc}</option>
+              <option key={cc} value={cc}>{cc === 'عام' ? t('finance.generalCostCenter') : cc}</option>
             ))}
           </select>
         </div>
 
         <div>
-          <label className="block text-xs font-bold text-zinc-400 mb-1">تفاصيل / ملاحظات</label>
-          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm resize-y" placeholder="تفاصيل الخدمة المطلوبة، مواعيد، متطلبات..." />
+          <label className="block text-xs font-bold text-zinc-400 mb-1">{t('quoteModal.detailsNotesLabel')}</label>
+          <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={3} className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm resize-y" placeholder={t('quoteModal.detailsNotesPh')} />
         </div>
 
         <div className="flex gap-2 justify-end pt-2">
-          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-bold bg-white/10 border border-white/15">إلغاء</button>
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-bold bg-white/10 border border-white/15">{t('common.cancel')}</button>
           <button
             type="button"
             onClick={submit}
             disabled={!productionUserId}
             className="px-4 py-2 rounded-xl text-sm font-black text-white bg-amber-500 hover:bg-amber-400 transition-colors disabled:opacity-40"
           >
-            {selectedProdUser ? `إرسال للتسعير → ${selectedProdUser.name}` : 'إرسال للتسعير'}
+            {selectedProdUser ? t('quoteModal.submitToPricingNamed', { name: selectedProdUser.name }) : t('quoteModal.submitToPricing')}
           </button>
         </div>
       </div>
@@ -5333,7 +5341,7 @@ const SalesManagerSettings = ({
   const handleCreateEmployee = async () => {
     const clean = newEmployee.name.trim();
     if (!clean) {
-      toast.error('اكتب اسم الموظف');
+      toast.error(t('finance.toastEmployeeName'));
       return;
     }
     const emailTrim = newEmployee.loginEmail.trim().toLowerCase();
@@ -6501,37 +6509,38 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
   }, [operationalLeads]);
 
   const printRepReport = () => {
-    const company = escapeHtml(printBrandingSettings.companyName || 'اسم الشركة');
-    const header = escapeHtml(printBrandingSettings.reportHeader || 'تقرير داخلي');
+    const company = escapeHtml(printBrandingSettings.companyName || t('repDash.printDefaultCompany'));
+    const header = escapeHtml(printBrandingSettings.reportHeader || t('repDash.printDefaultHeader'));
     const footer = escapeHtml(printBrandingSettings.reportFooter || '');
     const primaryColor = printBrandingSettings.primaryColor || '#4F46E5';
     const logo = printBrandingSettings.logoDataUrl
       ? `<img src="${printBrandingSettings.logoDataUrl}" alt="logo" style="height:42px;max-width:130px;object-fit:contain;" />`
       : '';
-    const printDate = new Date().toLocaleString('ar-EG');
+    const printDate = new Date().toLocaleString(dateLocale);
     const signatureName = escapeHtml(printBrandingSettings.signatureName || '');
     const signatureTitle = escapeHtml(printBrandingSettings.signatureTitle || '');
+    const filterLabel = leadFilter === 'all' ? t('repDash.printFilterAll') : leadFilter === 'today' ? t('repDash.printFilterToday') : t('repDash.printFilterOverdue');
     const rows = filteredLeads
       .map((lead) => {
         const latest = lead.timeline[0];
-        const followUpLabel = lead.followUpAt ? new Date(lead.followUpAt).toLocaleString('ar-EG') : 'غير محدد';
+        const followUpLabel = lead.followUpAt ? new Date(lead.followUpAt).toLocaleString(dateLocale) : t('repDash.unspecified');
         return `
           <tr>
             <td>${escapeHtml(lead.name)}</td>
             <td>${escapeHtml(lead.company)}</td>
-            <td>${escapeHtml(lead.status)}</td>
-            <td>${escapeHtml(lead.slaStatus)}</td>
+            <td>${escapeHtml(getLeadStatusLabel(lead.status, t))}</td>
+            <td>${escapeHtml(getSlaStatusLabel(lead.slaStatus, t))}</td>
             <td>${escapeHtml(followUpLabel)}</td>
-            <td>${escapeHtml(latest?.action || 'لا يوجد')}</td>
+            <td>${escapeHtml(latest?.action || t('repDash.printNoAction'))}</td>
           </tr>
         `;
       })
       .join('');
     const html = `
-      <html dir="rtl">
+      <html dir="${dir}">
       <head>
         <meta charset="utf-8" />
-        <title>تقرير المندوب - ${currentUser.name}</title>
+        <title>${escapeHtml(t('repDash.printReportTitle', { name: currentUser.name }))}</title>
         <style>
           :root { --primary-color: ${primaryColor}; }
           body { font-family: Arial, sans-serif; padding: 20px; color: #111; }
@@ -6557,19 +6566,19 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
           </div>
           ${logo}
         </div>
-        ${printBrandingSettings.showPrintDate ? `<p style="margin:0 0 10px;color:#666;font-size:12px;">تاريخ الطباعة: ${escapeHtml(printDate)}</p>` : ''}
-        <h2>تقرير متابعة المندوب - ${currentUser.name}</h2>
-        <p class="meta">الفلتر الحالي: ${leadFilter === 'all' ? 'الكل' : leadFilter === 'today' ? 'متابعات اليوم' : 'المتأخر فقط'} | عدد العملاء: ${filteredLeads.length}</p>
+        ${printBrandingSettings.showPrintDate ? `<p style="margin:0 0 10px;color:#666;font-size:12px;">${escapeHtml(t('repDash.printDateLabel', { date: printDate }))}</p>` : ''}
+        <h2>${escapeHtml(t('repDash.printReportTitle', { name: currentUser.name }))}</h2>
+        <p class="meta">${escapeHtml(t('repDash.printFilterMeta', { filter: filterLabel, count: filteredLeads.length }))}</p>
         <div class="cards">
-          <div class="card">نشط<b>${kpis.active}</b></div>
-          <div class="card">تم التواصل<b>${kpis.contacted}</b></div>
-          <div class="card">فوز<b>${kpis.won}</b></div>
-          <div class="card">خسارة<b>${kpis.lost}</b></div>
-          <div class="card">متأخر<b>${kpis.followUpOverdue}</b></div>
+          <div class="card">${escapeHtml(t('repDash.printCardActive'))}<b>${kpis.active}</b></div>
+          <div class="card">${escapeHtml(t('repDash.printCardContacted'))}<b>${kpis.contacted}</b></div>
+          <div class="card">${escapeHtml(t('repDash.printCardWon'))}<b>${kpis.won}</b></div>
+          <div class="card">${escapeHtml(t('repDash.printCardLost'))}<b>${kpis.lost}</b></div>
+          <div class="card">${escapeHtml(t('repDash.printCardOverdue'))}<b>${kpis.followUpOverdue}</b></div>
         </div>
         <table>
           <thead>
-            <tr><th>العميل</th><th>الشركة</th><th>الحالة</th><th>SLA</th><th>المتابعة القادمة</th><th>آخر إجراء</th></tr>
+            <tr><th>${escapeHtml(t('repDash.printColClient'))}</th><th>${escapeHtml(t('repDash.printColCompany'))}</th><th>${escapeHtml(t('repDash.printColStatus'))}</th><th>${escapeHtml(t('repDash.printColSla'))}</th><th>${escapeHtml(t('repDash.printColFollowUp'))}</th><th>${escapeHtml(t('repDash.printColLastAction'))}</th></tr>
           </thead>
           <tbody>${rows}</tbody>
         </table>
@@ -6933,7 +6942,7 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
                 </td>
                 <td className="p-3 align-top">
                   <div className="space-y-1.5">
-                    <p className="text-[11px] text-zinc-400">مرفقات: <span className="font-black text-zinc-200">{leadArchive.length}</span></p>
+                    <p className="text-[11px] text-zinc-400">{t('repDash.attachmentsCount', { count: leadArchive.length })}</p>
                     {leadArchive.map((a) => (
                       <a
                         key={a.id}
@@ -6945,12 +6954,12 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
                         {a.action}
                       </a>
                     ))}
-                    {leadArchive.length === 0 && <p className="text-[11px] text-zinc-500">لا يوجد أرشيف بعد</p>}
+                    {leadArchive.length === 0 && <p className="text-[11px] text-zinc-500">{t('repDash.noArchiveYet')}</p>}
                   </div>
                 </td>
                 <td className="p-3 align-top">
-                  <p className="text-sm font-bold text-zinc-100">{latest?.action || 'لا يوجد تواصل حتى الآن'}</p>
-                  <p className="text-[11px] text-zinc-500 mt-1">{latest?.createdAt ? new Date(latest.createdAt).toLocaleString('ar-EG') : '—'}</p>
+                  <p className="text-sm font-bold text-zinc-100">{latest?.action || t('repDash.noContactYet')}</p>
+                  <p className="text-[11px] text-zinc-500 mt-1">{latest?.createdAt ? new Date(latest.createdAt).toLocaleString(dateLocale) : '—'}</p>
                   {latest?.evidenceRef && (
                     <a
                       href={latest.evidenceRef}
@@ -6958,17 +6967,17 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
                       rel="noreferrer"
                       className="inline-block text-[11px] text-indigo-300 mt-1 underline"
                     >
-                      دليل التواصل
+                      {t('repDash.contactEvidence')}
                     </a>
                   )}
                 </td>
                 <td className="p-3 align-top">
-                  <p className="text-xs text-zinc-300 leading-5">{latest?.note?.trim() || 'لا توجد ملاحظة مسجلة'}</p>
+                  <p className="text-xs text-zinc-300 leading-5">{latest?.note?.trim() || t('repDash.noNote')}</p>
                 </td>
                 <td className="p-3 align-top">
                   <div className="space-y-2">
                     <p className={`text-xs font-bold ${isFollowUpOverdue ? 'text-rose-300' : 'text-zinc-200'}`}>
-                      {lead.followUpAt ? new Date(lead.followUpAt).toLocaleString('ar-EG') : 'غير محدد'}
+                      {lead.followUpAt ? new Date(lead.followUpAt).toLocaleString(dateLocale) : t('repDash.unspecified')}
                     </p>
                   <input
                     type="datetime-local"
@@ -6980,24 +6989,24 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
                       onClick={() => {
                         if (!draftFollowUp) {
                           setLeadFollowUp(lead.id, undefined);
-                          toast.info(`تم إلغاء متابعة ${lead.name}`);
+                          toast.info(t('repDash.followUpCleared', { name: lead.name }));
                           return;
                         }
                         const iso = new Date(draftFollowUp).toISOString();
                         setLeadFollowUp(lead.id, iso);
-                        toast.success(`تم تحديد متابعة ${lead.name}`);
+                        toast.success(t('repDash.followUpSet', { name: lead.name }));
                       }}
                       className="px-2.5 py-1.5 rounded-lg text-[11px] font-black bg-[#7C6BFF] text-white w-full"
                     >
-                      حفظ الموعد
+                      {t('repDash.saveFollowUp')}
                     </button>
                   </div>
                 </td>
                 <td className="p-3 align-top">
                   <div className="flex flex-wrap gap-1.5">
-                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${lead.status === 'مغلق - فوز' ? 'bg-emerald-500/20 text-emerald-300' : lead.status === 'مغلق - خسارة' ? 'bg-rose-500/20 text-rose-300' : 'bg-indigo-500/20 text-indigo-300'}`}>{lead.status}</span>
-                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${lead.slaStatus === 'حرج' ? 'bg-rose-500/20 text-rose-300' : lead.slaStatus === 'متأخر' ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}`}>SLA {lead.slaStatus}</span>
-                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${contacted ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-500/20 text-zinc-300'}`}>{contacted ? 'موثق' : 'غير موثق'}</span>
+                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${lead.status === 'مغلق - فوز' ? 'bg-emerald-500/20 text-emerald-300' : lead.status === 'مغلق - خسارة' ? 'bg-rose-500/20 text-rose-300' : 'bg-indigo-500/20 text-indigo-300'}`}>{getLeadStatusLabel(lead.status, t)}</span>
+                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${lead.slaStatus === 'حرج' ? 'bg-rose-500/20 text-rose-300' : lead.slaStatus === 'متأخر' ? 'bg-amber-500/20 text-amber-300' : 'bg-emerald-500/20 text-emerald-300'}`}>{t('repDash.slaLabel', { status: getSlaStatusLabel(lead.slaStatus, t) })}</span>
+                    <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${contacted ? 'bg-emerald-500/20 text-emerald-300' : 'bg-zinc-500/20 text-zinc-300'}`}>{contacted ? t('repDash.documented') : t('repDash.notDocumented')}</span>
                   </div>
                 </td>
                 <td className="p-3 align-top">
@@ -7007,17 +7016,17 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
                       onClick={() => openLeadUpdate(lead)}
                       className="col-span-2 px-2 py-1.5 rounded-lg text-[11px] font-black bg-[#7C6BFF] text-white border border-violet-400/40"
                     >
-                      + إضافة تحديث
+                      {t('repDash.addUpdate')}
                     </button>
-                    <button onClick={() => logCallDone(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-emerald-500 text-slate-950">مكالمة</button>
-                    <button onClick={() => logWhatsApp(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-indigo-500 text-white">واتساب</button>
-                    <button onClick={() => logNoAnswer(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-amber-500 text-slate-950">لم يرد</button>
-                    <button onClick={() => completeFollowUpNow(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-cyan-500 text-slate-950">+24h</button>
-                    <button onClick={() => closeWon(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-[#7C6BFF] text-white">فوز</button>
-                    <button onClick={() => closeLost(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-rose-500 text-white">خسارة</button>
+                    <button onClick={() => logCallDone(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-emerald-500 text-slate-950">{t('repDash.callBtn')}</button>
+                    <button onClick={() => logWhatsApp(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-indigo-500 text-white">{t('repDash.whatsappBtn')}</button>
+                    <button onClick={() => logNoAnswer(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-amber-500 text-slate-950">{t('repDash.noAnswer')}</button>
+                    <button onClick={() => completeFollowUpNow(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-cyan-500 text-slate-950">{t('repDash.followUp24h')}</button>
+                    <button onClick={() => closeWon(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-[#7C6BFF] text-white">{t('repDash.won')}</button>
+                    <button onClick={() => closeLost(lead)} className="px-2 py-1.5 rounded-lg text-[11px] font-black bg-rose-500 text-white">{t('repDash.lost')}</button>
                   </div>
                   <button type="button" onClick={() => setQuoteLead(lead)} className="mt-1.5 w-full px-2 py-1.5 rounded-lg text-[11px] font-black bg-amber-500/20 text-amber-200 border border-amber-500/30">
-                    عرض سعر
+                    {t('repDash.priceQuote')}
                   </button>
                 </td>
               </tr>
@@ -7027,7 +7036,7 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
           </table>
         </div>
         {filteredLeads.length === 0 && (
-          <div className="text-center text-zinc-400 py-8">لا توجد عملاء مسندة لك حاليًا.</div>
+          <div className="text-center text-zinc-400 py-8">{t('repDash.noAssignedLeads')}</div>
         )}
       </div>
       <PriceQuoteSubmitModal lead={quoteLead} open={!!quoteLead} onClose={() => setQuoteLead(null)} />
@@ -7074,12 +7083,12 @@ const RepPerformanceView = ({ currentUser, onGoToTab }: { currentUser: User; onG
   }, [snapshot, activeOverdueCount]);
 
   const scoreLabel = performanceScore >= 85
-    ? 'ممتاز'
+    ? t('repDash.scoreExcellent')
     : performanceScore >= 70
-      ? 'جيد جدًا'
+      ? t('repDash.scoreVeryGood')
       : performanceScore >= 55
-        ? 'جيد'
-        : 'يحتاج تحسين';
+        ? t('repDash.scoreGood')
+        : t('repDash.scoreNeedsImprovement');
   const scoreColorClass = performanceScore >= 85
     ? 'text-emerald-300 bg-emerald-500/15 border-emerald-500/30'
     : performanceScore >= 70
@@ -7896,8 +7905,8 @@ const BookingCenter = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTa
                       <p className="text-zinc-400 truncate">{b.location}</p>
                     </div>
                   ))}
-                  {bookings.length > 3 && <p className="text-[10px] text-zinc-500">+{bookings.length - 3} مواعيد أخرى</p>}
-                  {bookings.length === 0 && <p className="text-[10px] text-zinc-500">لا توجد مواعيد</p>}
+                  {bookings.length > 3 && <p className="text-[10px] text-zinc-500">{t('bookings.moreShootSlots', { count: bookings.length - 3 })}</p>}
+                  {bookings.length === 0 && <p className="text-[10px] text-zinc-500">{t('bookings.noShootSlots')}</p>}
                 </div>
               </div>
             );
@@ -7908,7 +7917,7 @@ const BookingCenter = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTa
 
       {bookingHubTab === 'shoot' && !canReview && (
         <div className="bg-white/[0.04] border border-white/10 rounded-3xl p-6 space-y-3">
-            <h3 className="font-black">طلب حجز موعد تصوير</h3>
+            <h3 className="font-black">{t('bookings.shootRequestTitle')}</h3>
             <select
               value={shootForm.leadId}
               onChange={(e) => {
@@ -7917,24 +7926,24 @@ const BookingCenter = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTa
               }}
               className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm"
             >
-              <option value="">اختياري: ربط بعميل من ليدزك</option>
+              <option value="">{t('bookings.optionalLeadFromMyLeads')}</option>
               {myLeads.map(l => <option key={l.id} value={l.id}>{l.name} - {l.company}</option>)}
             </select>
-            <input value={shootForm.customerName} onChange={(e) => setShootForm(prev => ({ ...prev, customerName: e.target.value }))} placeholder="اسم العميل" className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+            <input value={shootForm.customerName} onChange={(e) => setShootForm(prev => ({ ...prev, customerName: e.target.value }))} placeholder={t('bookings.clientName')} className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
             <div className="grid grid-cols-2 gap-2">
               <input type="date" value={shootForm.date} onChange={(e) => setShootForm(prev => ({ ...prev, date: e.target.value }))} className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
               <input type="time" value={shootForm.time} onChange={(e) => setShootForm(prev => ({ ...prev, time: e.target.value }))} className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
             </div>
-            <input value={shootForm.location} onChange={(e) => setShootForm(prev => ({ ...prev, location: e.target.value }))} placeholder="مكان التصوير" className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
-            <input type="number" min={0} value={shootForm.estimatedCost} onChange={(e) => setShootForm(prev => ({ ...prev, estimatedCost: e.target.value }))} placeholder="تكلفة تقديرية (مطالبة مالية)" className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
-            <textarea value={shootForm.notes} onChange={(e) => setShootForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="ملاحظات" className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm min-h-[70px]" />
-            <button onClick={handleAddShoot} className="px-4 py-2 rounded-xl bg-[#7C6BFF] text-white text-sm font-black">إرسال طلب التصوير</button>
+            <input value={shootForm.location} onChange={(e) => setShootForm(prev => ({ ...prev, location: e.target.value }))} placeholder={t('bookings.shootLocation')} className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+            <input type="number" min={0} value={shootForm.estimatedCost} onChange={(e) => setShootForm(prev => ({ ...prev, estimatedCost: e.target.value }))} placeholder={t('bookings.estimatedCostFinancial')} className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+            <textarea value={shootForm.notes} onChange={(e) => setShootForm(prev => ({ ...prev, notes: e.target.value }))} placeholder={t('bookings.notes')} className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm min-h-[70px]" />
+            <button onClick={handleAddShoot} className="px-4 py-2 rounded-xl bg-[#7C6BFF] text-white text-sm font-black">{t('bookings.submitShoot')}</button>
         </div>
       )}
 
       {bookingHubTab === 'equipment' && !canReview && (
         <div className="bg-white/[0.04] border border-white/10 rounded-3xl p-6 space-y-3">
-            <h3 className="font-black">طلب حجز معدات</h3>
+            <h3 className="font-black">{t('bookings.equipmentRequestTitle')}</h3>
             <select
               value={equipmentForm.leadId}
               onChange={(e) => {
@@ -7943,53 +7952,53 @@ const BookingCenter = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTa
               }}
               className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm"
             >
-              <option value="">اختياري: ربط بعميل من ليدزك</option>
+              <option value="">{t('bookings.optionalLeadFromMyLeads')}</option>
               {myLeads.map(l => <option key={l.id} value={l.id}>{l.name} - {l.company}</option>)}
             </select>
-            <input value={equipmentForm.customerName} onChange={(e) => setEquipmentForm(prev => ({ ...prev, customerName: e.target.value }))} placeholder="اسم العميل" className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+            <input value={equipmentForm.customerName} onChange={(e) => setEquipmentForm(prev => ({ ...prev, customerName: e.target.value }))} placeholder={t('bookings.clientName')} className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
             <div className="grid grid-cols-2 gap-2">
               <select value={equipmentForm.equipmentName} onChange={(e) => setEquipmentForm(prev => ({ ...prev, equipmentName: e.target.value }))} className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm">
-                <option value="">اختر المعدة</option>
+                <option value="">{t('bookings.selectEquipment')}</option>
                 {equipmentItems.filter(e => e.active).map(e => (
                   <option key={e.id} value={e.name}>
-                    {e.name} ({e.category}) - متاح {equipmentAvailableByName.get(e.name) ?? e.totalQuantity}
+                    {t('bookings.equipmentOption', { name: e.name, category: e.category, count: equipmentAvailableByName.get(e.name) ?? e.totalQuantity })}
                   </option>
                 ))}
               </select>
-              <input type="number" min={1} value={equipmentForm.quantity} onChange={(e) => setEquipmentForm(prev => ({ ...prev, quantity: e.target.value }))} placeholder="الكمية" className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+              <input type="number" min={1} value={equipmentForm.quantity} onChange={(e) => setEquipmentForm(prev => ({ ...prev, quantity: e.target.value }))} placeholder={t('bookings.quantityPh')} className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
             </div>
             <div className="grid grid-cols-2 gap-2">
               <input type="date" value={equipmentForm.fromDate} onChange={(e) => setEquipmentForm(prev => ({ ...prev, fromDate: e.target.value }))} className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
               <input type="date" value={equipmentForm.toDate} onChange={(e) => setEquipmentForm(prev => ({ ...prev, toDate: e.target.value }))} className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
             </div>
-            <input type="number" min={0} value={equipmentForm.estimatedCost} onChange={(e) => setEquipmentForm(prev => ({ ...prev, estimatedCost: e.target.value }))} placeholder="تكلفة تقديرية (مطالبة مالية)" className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
-            <textarea value={equipmentForm.notes} onChange={(e) => setEquipmentForm(prev => ({ ...prev, notes: e.target.value }))} placeholder="ملاحظات" className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm min-h-[70px]" />
-            <button onClick={handleAddEquipment} className="px-4 py-2 rounded-xl bg-indigo-500 text-white text-sm font-black">إرسال طلب المعدات</button>
+            <input type="number" min={0} value={equipmentForm.estimatedCost} onChange={(e) => setEquipmentForm(prev => ({ ...prev, estimatedCost: e.target.value }))} placeholder={t('bookings.estimatedCostFinancial')} className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+            <textarea value={equipmentForm.notes} onChange={(e) => setEquipmentForm(prev => ({ ...prev, notes: e.target.value }))} placeholder={t('bookings.notes')} className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm min-h-[70px]" />
+            <button onClick={handleAddEquipment} className="px-4 py-2 rounded-xl bg-indigo-500 text-white text-sm font-black">{t('bookings.submitEquipment')}</button>
         </div>
       )}
 
       {bookingHubTab === 'other' && (
         <div className="bg-white/[0.04] border border-white/10 rounded-3xl p-6 space-y-3">
-          <h3 className="font-black">حجوزات أخرى</h3>
-          <p className="text-xs text-zinc-500">سجّل نشاطًا أو طلبًا عامًا ببيان نصي؛ يُحفظ في مساحة العمل ويُرى لجميع الأدوار.</p>
+          <h3 className="font-black">{t('bookings.otherBookingsTitle')}</h3>
+          <p className="text-xs text-zinc-500">{t('bookings.otherBookingsHint')}</p>
           <input
             value={otherForm.title}
             onChange={(e) => setOtherForm((p) => ({ ...p, title: e.target.value }))}
-            placeholder="عنوان مختصر (اختياري)"
+            placeholder={t('bookings.shortTitlePh')}
             className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm"
           />
           <input type="date" value={otherForm.date} onChange={(e) => setOtherForm((p) => ({ ...p, date: e.target.value }))} className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm [color-scheme:dark]" />
           <textarea
             value={otherForm.statement}
             onChange={(e) => setOtherForm((p) => ({ ...p, statement: e.target.value }))}
-            placeholder="البيان — وصف نوع الحجز أو الموعد أو المطلوب"
+            placeholder={t('bookings.statementPh')}
             className="w-full bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm min-h-[90px]"
           />
           <button type="button" onClick={() => void handleAddOther()} className="px-4 py-2 rounded-xl bg-amber-500 text-slate-950 text-sm font-black">
-            حفظ الحجز
+            {t('bookings.saveOtherBooking')}
           </button>
           <div className="border-t border-white/10 pt-4 mt-4 space-y-2 max-h-[380px] overflow-auto">
-            <h4 className="text-sm font-black text-zinc-300">السجل</h4>
+            <h4 className="text-sm font-black text-zinc-300">{t('bookings.historyTitle')}</h4>
             {[...filteredOtherBookings].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()).map((b) => {
               const canDel =
                 b.createdById === currentUser.id || currentUser.role === 'مالك' || currentUser.role === 'مدير مبيعات';
@@ -8000,7 +8009,7 @@ const BookingCenter = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTa
                       <p className="font-bold">{b.title}</p>
                       {b.date ? <p className="text-xs text-zinc-400 mt-0.5">{b.date}</p> : null}
                       <p className="text-zinc-300 mt-2 whitespace-pre-wrap">{b.statement}</p>
-                      <p className="text-[11px] text-zinc-500 mt-2">بواسطة {b.createdByName} · {new Date(b.createdAt).toLocaleString('ar-EG')}</p>
+                      <p className="text-[11px] text-zinc-500 mt-2">{t('bookings.byAuthor', { name: b.createdByName, date: new Date(b.createdAt).toLocaleString(dateLocale) })}</p>
                     </div>
                     {canDel ? (
                       <button
@@ -8008,27 +8017,27 @@ const BookingCenter = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTa
                         onClick={() => {
                           void (async () => {
                             const ok = await removeOtherBooking(b.id);
-                            if (!ok) toast.error('لا يمكن الحذف');
-                            else toast.success('تم الحذف');
+                            if (!ok) toast.error(t('bookings.deleteFailed'));
+                            else toast.success(t('bookings.deleted'));
                           })();
                         }}
                         className="shrink-0 px-2 py-1 rounded-lg text-[11px] font-black bg-rose-500/20 text-rose-300 hover:bg-rose-500/30"
                       >
-                        حذف
+                        {t('common.delete')}
                       </button>
                     ) : null}
                   </div>
                 </div>
               );
             })}
-            {filteredOtherBookings.length === 0 && <p className="text-sm text-zinc-500">لا توجد سجلات.</p>}
+            {filteredOtherBookings.length === 0 && <p className="text-sm text-zinc-500">{t('bookings.noRecords')}</p>}
           </div>
         </div>
       )}
 
       {bookingHubTab === 'shoot' ? (
         <div className="bg-white/[0.04] border border-white/10 rounded-3xl p-6">
-          <h3 className="font-black mb-4">طلبات التصوير</h3>
+          <h3 className="font-black mb-4">{t('bookings.shootRequestsTitle')}</h3>
           <div className="space-y-3 max-h-[420px] overflow-auto">
             {filteredShoot.map((b) => (
               <div key={b.id} className="bg-[#0F1528]/70 border border-white/10 rounded-xl p-3">
@@ -8040,32 +8049,32 @@ const BookingCenter = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTa
                   ) : (
                     <p className="font-bold">{b.customerName}</p>
                   )}
-                  <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${statusClass(b.status)}`}>{b.status}</span>
+                  <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${statusClass(b.status)}`}>{getBookingStatusLabel(b.status, t)}</span>
                 </div>
                 <p className="text-xs text-zinc-400 mt-1">{b.date} - {b.time} - {b.location}</p>
-                <p className="text-[11px] text-zinc-500 mt-1">بواسطة: {b.repName}</p>
+                <p className="text-[11px] text-zinc-500 mt-1">{t('bookings.byRep', { name: b.repName })}</p>
                 {canOwnerApprove && b.status === 'قيد المراجعة' && (
                   <div className="flex items-center gap-2 mt-2">
-                    <button onClick={() => { void (async () => { const ok = await updateShootBookingStatus(b.id, 'معتمد'); if (!ok) { toast.error('تعذر الاعتماد — تحقق من الشهر المحاسبي أو استحقاق المصروف على السيرفر'); return; } toast.success(b.estimatedCost && Number(b.estimatedCost) > 0 ? 'تم الاعتماد وتسجيل الاستحقاق للدفاتر — بانتظار إثبات بنود الإنتاج' : 'تم اعتماد طلب التصوير'); })(); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">اعتماد</button>
-                    <button onClick={() => { void (async () => { const ok = await updateShootBookingStatus(b.id, 'مرفوض'); if (!ok) { toast.error('تعذر الرفض'); return; } toast.info('تم رفض طلب التصوير'); })(); }} className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black">رفض</button>
+                    <button onClick={() => { void (async () => { const ok = await updateShootBookingStatus(b.id, 'معتمد'); if (!ok) { toast.error(t('bookings.approveFailed')); return; } toast.success(b.estimatedCost && Number(b.estimatedCost) > 0 ? t('bookings.shootApprovedWithAccrual') : t('bookings.shootApproved')); })(); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">{t('common.approve')}</button>
+                    <button onClick={() => { void (async () => { const ok = await updateShootBookingStatus(b.id, 'مرفوض'); if (!ok) { toast.error(t('bookings.rejectFailed')); return; } toast.info(t('bookings.shootRejected')); })(); }} className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black">{t('common.reject')}</button>
                   </div>
                 )}
                 {canAccountantExecute && b.financialStatus === 'بانتظار_تنفيذ_محاسب' && (
                   <div className="flex items-center gap-2 mt-2">
                     <button onClick={() => { void (async () => {
                       const ok = await accountantExecuteShootBookingClaim(b.id, 'كاش');
-                      if (!ok) toast.error('تعذر التنفيذ');
-                      else toast.success('تم التنفيذ كاش وتسجيل المطالبة مالياً');
-                    })(); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">تنفيذ كاش</button>
+                      if (!ok) toast.error(t('bookings.executeFailed'));
+                      else toast.success(t('bookings.executedCash'));
+                    })(); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">{t('bookings.executeCash')}</button>
                     <button onClick={() => { void (async () => {
                       const ok = await accountantExecuteShootBookingClaim(b.id, 'تحويل');
-                      if (!ok) toast.error('تعذر التنفيذ');
-                      else toast.success('تم التنفيذ تحويل وتسجيل المطالبة مالياً');
-                    })(); }} className="px-2 py-1 rounded-lg text-xs bg-indigo-500 text-white font-black">تنفيذ تحويل</button>
+                      if (!ok) toast.error(t('bookings.executeFailed'));
+                      else toast.success(t('bookings.executedTransfer'));
+                    })(); }} className="px-2 py-1 rounded-lg text-xs bg-indigo-500 text-white font-black">{t('bookings.executeTransfer')}</button>
                   </div>
                 )}
-                {b.estimatedCost ? <p className="text-[11px] text-zinc-400 mt-1">تكلفة تقديرية: {Number(b.estimatedCost).toLocaleString()} ج.م</p> : null}
-                {b.financialStatus ? <p className="text-[11px] text-zinc-500 mt-1">الحالة المالية: {b.financialStatus}</p> : null}
+                {b.estimatedCost ? <p className="text-[11px] text-zinc-400 mt-1">{t('bookings.estimatedCost', { amount: Number(b.estimatedCost).toLocaleString(dateLocale), currency })}</p> : null}
+                {b.financialStatus ? <p className="text-[11px] text-zinc-500 mt-1">{t('bookings.financialStatus', { status: getBookingFinancialStatusLabel(b.financialStatus, t) })}</p> : null}
                 {canProductionSpend && b.financialStatus === 'بانتظار_تنفيذ_إنتاج' && (
                   <ProductionBookingSpendCompact
                     kind="shoot"
@@ -8077,30 +8086,30 @@ const BookingCenter = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTa
                 )}
               </div>
             ))}
-            {filteredShoot.length === 0 && <p className="text-sm text-zinc-400">لا توجد طلبات تصوير.</p>}
+            {filteredShoot.length === 0 && <p className="text-sm text-zinc-400">{t('bookings.noShootRequests')}</p>}
           </div>
         </div>
       ) : null}
 
       {bookingHubTab === 'equipment' ? (
         <div className="bg-white/[0.04] border border-white/10 rounded-3xl p-6">
-          <h3 className="font-black mb-4">طلبات المعدات</h3>
+          <h3 className="font-black mb-4">{t('bookings.equipmentRequestsTitle')}</h3>
           <div className="space-y-3 max-h-[420px] overflow-auto">
             {filteredEquipment.map((b) => (
               <div key={b.id} className="bg-[#0F1528]/70 border border-white/10 rounded-xl p-3">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-bold">{b.equipmentName} x{b.quantity}</p>
-                  <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${statusClass(b.status)}`}>{b.status}</span>
+                  <span className={`px-2 py-1 rounded-lg text-[10px] font-black ${statusClass(b.status)}`}>{getBookingStatusLabel(b.status, t)}</span>
                 </div>
                 <p className="text-xs text-zinc-400 mt-1">
                   {b.leadId ? (
                     <button type="button" onClick={() => goClient360(b.leadId)} className="cursor-pointer text-right hover:text-indigo-300 hover:underline underline-offset-2 transition-colors">
                       {b.customerName}
                     </button>
-                  ) : b.customerName} - من {b.fromDate} إلى {b.toDate}
+                  ) : b.customerName} — {t('bookings.fromToDates', { from: b.fromDate, to: b.toDate })}
                 </p>
-                <p className="text-[11px] text-zinc-500 mt-1">المتاح حاليًا: {equipmentAvailableByName.get(b.equipmentName) ?? 0}</p>
-                <p className="text-[11px] text-zinc-500 mt-1">بواسطة: {b.repName}</p>
+                <p className="text-[11px] text-zinc-500 mt-1">{t('bookings.equipmentAvailableNow', { count: equipmentAvailableByName.get(b.equipmentName) ?? 0 })}</p>
+                <p className="text-[11px] text-zinc-500 mt-1">{t('bookings.byRep', { name: b.repName })}</p>
                 {canOwnerApprove && b.status === 'قيد المراجعة' && (
                   <div className="flex items-center gap-2 mt-2">
                     <button
@@ -8108,30 +8117,30 @@ const BookingCenter = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTa
                         void (async () => {
                         const ok = await updateEquipmentBookingStatus(b.id, 'معتمد');
                         if (!ok) {
-                          toast.error('لا يمكن الاعتماد: الكمية غير كافية، أو شهر مقفل، أو تعذّر مصروف الاستحقاق على الخادم');
+                          toast.error(t('bookings.equipmentApproveFailed'));
                           return;
                         }
-                        toast.success(b.estimatedCost && Number(b.estimatedCost) > 0 ? 'تم اعتماد الطلب؛ تسجل الاستحقاق للمحاسبة — أكمل بنود الإنتاج' : 'تم اعتماد الطلب وخصم الكمية من المتاح');
+                        toast.success(b.estimatedCost && Number(b.estimatedCost) > 0 ? t('bookings.equipmentApprovedWithAccrual') : t('bookings.equipmentApproved'));
                         })();
                       }}
                       className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black"
                     >
-                      اعتماد
+                      {t('common.approve')}
                     </button>
                     <button
                       onClick={() => {
                         void (async () => {
                         const ok = await updateEquipmentBookingStatus(b.id, 'مرفوض');
                         if (!ok) {
-                          toast.error('تعذر تحديث حالة الطلب');
+                          toast.error(t('bookings.equipmentRejectFailed'));
                           return;
                         }
-                        toast.info('تم رفض طلب المعدات');
+                        toast.info(t('bookings.equipmentRejected'));
                         })();
                       }}
                       className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black"
                     >
-                      رفض
+                      {t('common.reject')}
                     </button>
                   </div>
                 )}
@@ -8139,18 +8148,18 @@ const BookingCenter = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTa
                   <div className="flex items-center gap-2 mt-2">
                     <button onClick={() => { void (async () => {
                       const ok = await accountantExecuteEquipmentBookingClaim(b.id, 'كاش');
-                      if (!ok) toast.error('تعذر التنفيذ');
-                      else toast.success('تم التنفيذ كاش وتسجيل المطالبة مالياً');
-                    })(); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">تنفيذ كاش</button>
+                      if (!ok) toast.error(t('bookings.executeFailed'));
+                      else toast.success(t('bookings.executedCash'));
+                    })(); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">{t('bookings.executeCash')}</button>
                     <button onClick={() => { void (async () => {
                       const ok = await accountantExecuteEquipmentBookingClaim(b.id, 'تحويل');
-                      if (!ok) toast.error('تعذر التنفيذ');
-                      else toast.success('تم التنفيذ تحويل وتسجيل المطالبة مالياً');
-                    })(); }} className="px-2 py-1 rounded-lg text-xs bg-indigo-500 text-white font-black">تنفيذ تحويل</button>
+                      if (!ok) toast.error(t('bookings.executeFailed'));
+                      else toast.success(t('bookings.executedTransfer'));
+                    })(); }} className="px-2 py-1 rounded-lg text-xs bg-indigo-500 text-white font-black">{t('bookings.executeTransfer')}</button>
                   </div>
                 )}
-                {b.estimatedCost ? <p className="text-[11px] text-zinc-400 mt-1">تكلفة تقديرية: {Number(b.estimatedCost).toLocaleString()} ج.م</p> : null}
-                {b.financialStatus ? <p className="text-[11px] text-zinc-500 mt-1">الحالة المالية: {b.financialStatus}</p> : null}
+                {b.estimatedCost ? <p className="text-[11px] text-zinc-400 mt-1">{t('bookings.estimatedCost', { amount: Number(b.estimatedCost).toLocaleString(dateLocale), currency })}</p> : null}
+                {b.financialStatus ? <p className="text-[11px] text-zinc-500 mt-1">{t('bookings.financialStatus', { status: getBookingFinancialStatusLabel(b.financialStatus, t) })}</p> : null}
                 {canProductionSpend && b.financialStatus === 'بانتظار_تنفيذ_إنتاج' && (
                   <ProductionBookingSpendCompact
                     kind="equipment"
@@ -8162,7 +8171,7 @@ const BookingCenter = ({ currentUser, onGoToTab }: { currentUser: User; onGoToTa
                 )}
               </div>
             ))}
-            {filteredEquipment.length === 0 && <p className="text-sm text-zinc-400">لا توجد طلبات معدات.</p>}
+            {filteredEquipment.length === 0 && <p className="text-sm text-zinc-400">{t('bookings.noEquipmentRequests')}</p>}
           </div>
         </div>
       ) : null}
