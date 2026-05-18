@@ -22,6 +22,7 @@ export function normalizeLeadSource(source: string | null | undefined): string {
   if (/google|جوجل|google\s*ads|google\s*sheet/.test(s)) return 'google';
   if (/linkedin|لينكد/.test(s)) return 'linkedin';
   if (/email|gmail|بريد|inbox|leads\s*inbox/.test(s)) return 'email';
+  if (/excel|xlsx|رفع\s*ملف|spreadsheet|شيت/.test(s)) return 'manual';
   return s;
 }
 

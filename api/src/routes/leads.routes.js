@@ -230,7 +230,7 @@ router.post('/import-csv', requireAuth(), async (req, res) => {
     }
     const body = req.body || {};
     const source = String(body.source || 'linkedin').trim().toLowerCase();
-    const allowedSources = ['linkedin', 'google', 'email', 'facebook', 'instagram'];
+    const allowedSources = ['linkedin', 'google', 'email', 'facebook', 'instagram', 'excel'];
     if (!allowedSources.includes(source)) {
       return res.status(400).json({ error: 'مصدر غير مدعوم' });
     }

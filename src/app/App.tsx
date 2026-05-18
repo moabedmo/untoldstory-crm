@@ -79,6 +79,7 @@ import {
 } from '@/lib/repQuotePipeline';
 import PageViewsHub from './components/PageViewsHub';
 import { useLeadRepUpdate } from './components/LeadRepUpdateModal';
+import { BulkLeadsUploadModal } from './components/BulkLeadsUploadModal';
 
 // --- Shared Components ---
 const SYSTEM_NAME = 'The Untold Story System';
@@ -3543,7 +3544,7 @@ const PriceQuoteSubmitModal = ({
 
 const LEADS_PAGE_SIZE = 25;
 
-const LeadsWorkspace = () => {
+const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void }) => {
   const { leads, users, invoices, expenses, priceQuotes, shootBookings, equipmentBookings, meetingBookings, manualCustomers, currentUser, addLead, addManualCustomer, assignLead, updateLeadStatus, deleteLead } = useData();
   const { openLeadUpdate, canUpdateLead, LeadRepUpdateModal } = useLeadRepUpdate();
   const [search, setSearch] = useState('');
@@ -4240,6 +4241,14 @@ const LeadsWorkspace = () => {
 
         {entityMode === 'leads' && canCreateLead && (
           <div className="mt-4 flex justify-end gap-3 flex-wrap">
+            <button
+              type="button"
+              onClick={() => onOpenBulkUpload?.()}
+              className="bg-emerald-600 text-white px-6 py-3 rounded-2xl text-sm font-black inline-flex items-center gap-2 hover:bg-emerald-500 transition-colors"
+            >
+              <FileUp className="w-4 h-4" />
+              رفع Excel / CSV
+            </button>
             <a
               href="/leads/import"
               className="bg-[#0A66C2] text-white px-6 py-3 rounded-2xl text-sm font-black inline-flex items-center gap-2 hover:bg-[#0958a8] transition-colors"
@@ -5812,68 +5821,6 @@ const SalesManagerSettings = ({
               e.currentTarget.value = '';
             }}
           />
-        </div>
-      </div>
-    </div>
-  );
-};
-
-// --- Rep View & Bulk Upload ---
-
-const BulkUploadModal = ({ isOpen, onClose }: any) => {
-  const { bulkAddLeads } = useData();
-  const [isUploading, setIsUploading] = useState(false);
-
-  const handleSimulateUpload = () => {
-    setIsUploading(true);
-    setTimeout(() => {
-      void (async () => {
-        const mockLeads: any[] = [
-          { name: 'يوسف كمال', company: 'ميديا هاوس', phone: '01223344556', email: 'y.kamal@mail.com', status: 'جديد', budget: 25000, companySize: 'متوسط', source: 'رفع ملف', category: 'إعلانات' },
-          { name: 'نهى سالم', company: 'تيك فلو', phone: '01011223344', email: 'noha@tech.com', status: 'جديد', budget: 60000, companySize: 'كبير', source: 'رفع ملف', category: 'شركات كبرى' },
-          { name: 'John Doe', company: 'Int Global', phone: '+12345678', email: 'john@int.com', status: 'جديد', budget: 15000, companySize: 'صغير', source: 'رفع ملف', category: 'إنجليزي' },
-        ];
-        const { created, failed } = await bulkAddLeads(mockLeads);
-        setIsUploading(false);
-        onClose();
-        if (created > 0) {
-          toast.success(`تم رفع ${created} ليدز وتوزيعها تلقائياً${failed ? ` (${failed} صفوف لم تُضف)` : ''}.`);
-        } else {
-          toast.error('لم تُضف ليدز — تحقق من الصلاحيات أو من عدم التكرار/شروط الجودة.');
-        }
-      })();
-    }, 2000);
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[200] flex items-center justify-center p-6" dir="rtl">
-      <div className="bg-slate-900 border border-slate-800 w-full max-w-lg rounded-[3rem] p-8 animate-in zoom-in duration-300">
-        <div className="flex items-center justify-between mb-8">
-          <h2 className="text-2xl font-black">رفع ليدز من ملف</h2>
-          <button onClick={onClose} className="p-2 hover:bg-slate-800 rounded-xl transition-colors"><X className="w-6 h-6" /></button>
-        </div>
-
-        <div className="border-2 border-dashed border-slate-700 rounded-3xl p-12 text-center hover:border-emerald-500/50 transition-colors group cursor-pointer" onClick={handleSimulateUpload}>
-          <div className="w-20 h-20 bg-emerald-500/10 rounded-full flex items-center justify-center mx-auto mb-6 group-hover:scale-110 transition-transform">
-            <FileUp className="w-10 h-10 text-emerald-500" />
-          </div>
-          <p className="text-lg font-bold mb-2">اضغط هنا أو اسحب الملف لرفعه</p>
-          <p className="text-sm text-slate-500 uppercase tracking-widest font-black">Excel, CSV (حتى 10MB)</p>
-          {isUploading && (
-             <div className="mt-8">
-               <div className="w-full bg-slate-800 h-2 rounded-full overflow-hidden">
-                 <div className="bg-emerald-500 h-full animate-progress" style={{ width: '60%' }} />
-               </div>
-               <p className="mt-4 text-emerald-500 font-bold text-sm animate-pulse">جاري تحليل البيانات وتوزيع الليدز...</p>
-             </div>
-          )}
-        </div>
-
-        <div className="mt-8 bg-blue-500/10 border border-blue-500/20 p-6 rounded-2xl flex items-start gap-4 text-blue-400">
-          <AlertCircle className="w-6 h-6 flex-shrink-0" />
-          <p className="text-xs font-bold leading-relaxed">تأكد من وجود الأعمدة التالية في الملف: الاسم، الشركة، الموبايل، التصنيف (إنجليزي، شركات كبرى، إلخ) لضمان دقة التوزيع التلقائي.</p>
         </div>
       </div>
     </div>
@@ -11313,7 +11260,7 @@ const Root = () => {
 
   return (
     <div className={`system-theme ${uiVisualMode === 'premium' ? 'premium-shell cinematic-production' : 'ui-classic'} ${isNotificationsOpen ? 'notifications-open' : ''} ${roleClass} tab-${activeTab} flex min-h-screen bg-[#080B13] text-slate-100 font-['Cairo'] overflow-x-hidden`} dir="rtl">
-      <BulkUploadModal isOpen={isBulkModalOpen} onClose={() => setIsBulkModalOpen(false)} />
+      <BulkLeadsUploadModal isOpen={isBulkModalOpen} onClose={() => setIsBulkModalOpen(false)} />
       {personalTodoDueAlarm && personalTodoDueAlarm.length > 0
         ? createPortal(
             <div
@@ -11505,16 +11452,17 @@ const Root = () => {
                 </button>
               </>
             )}
-            {currentUser.role === 'مندوب' && (
-              <button 
+            {(currentUser.role === 'مالك' || currentUser.role === 'مدير مبيعات') && (
+              <button
+                type="button"
                 onClick={() => setIsBulkModalOpen(true)}
-                title="رفع ملف ليدز"
+                title="رفع Excel / CSV"
                 className="premium-top-action group relative h-12 w-12 sm:w-auto sm:px-5 bg-gradient-to-b from-white/[0.08] to-white/[0.03] text-zinc-100 rounded-xl font-bold inline-flex items-center justify-center gap-2.5 hover:border-rose-300/40 hover:shadow-[0_10px_24px_rgba(244,63,94,0.15)] transition-all border border-white/15 shrink-0"
               >
                 <FileUp className="w-5 h-5 text-[#A99FFF]" />
-                <span className="hidden lg:inline">رفع ملف ليدز</span>
+                <span className="hidden lg:inline">رفع Excel</span>
                 <span className="lg:hidden pointer-events-none absolute left-1/2 -translate-x-1/2 top-[110%] whitespace-nowrap rounded-lg border border-white/15 bg-[#0B1020]/95 px-2 py-1 text-[10px] text-zinc-100 opacity-0 group-hover:opacity-100 transition-opacity z-30">
-                  رفع ليدز
+                  رفع Excel
                 </span>
               </button>
             )}
@@ -11956,7 +11904,7 @@ const Root = () => {
           <RepPerformanceView currentUser={currentUser} onGoToTab={handleTabChange} />
         )}
 
-        {activeTab === 'leads' && <LeadsWorkspace />}
+        {activeTab === 'leads' && <LeadsWorkspace onOpenBulkUpload={() => setIsBulkModalOpen(true)} />}
         {activeTab === 'linked-views' && <PageViewsHub />}
         {activeTab === 'seo' && currentUser.role === 'مالك' && <SeoModuleHub />}
         </div>
