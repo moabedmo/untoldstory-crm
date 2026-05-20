@@ -4147,6 +4147,17 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
       totalRemaining,
     };
   }, [client360Lead, invoices, expenses, meetingBookings, shootBookings, equipmentBookings]);
+
+  useEffect(() => {
+    if (!client360Lead) return;
+    const main = document.querySelector('main.premium-main-layer') as HTMLElement | null;
+    const prevOverflow = main?.style.overflow ?? '';
+    if (main) main.style.overflow = 'hidden';
+    return () => {
+      if (main) main.style.overflow = prevOverflow;
+    };
+  }, [client360Lead]);
+
   const exportCustomerStatementCsv = () => {
     if (!statementCustomer) return;
     const rows: string[][] = [
@@ -4667,7 +4678,10 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
                           )}
                           <button
                             type="button"
-                            onClick={() => setClient360Lead(lead)}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              setClient360Lead(lead);
+                            }}
                             className="px-2 py-1.5 rounded-lg text-[10px] font-black bg-cyan-500/20 text-cyan-200 border border-cyan-500/30"
                           >
                             {t('leads.client360')}
@@ -4970,9 +4984,18 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
           </div>
         </div>
       )}
-      {client360Lead && client360Data && (
-        <div className="fixed inset-0 bg-black/80 backdrop-blur-md z-[240] flex items-center justify-center p-6">
-          <div className="bg-[#0E1426] border border-white/10 w-full max-w-6xl rounded-[2.5rem] p-6 max-h-[90vh] overflow-y-auto custom-scrollbar">
+      {client360Lead && client360Data && typeof document !== 'undefined' && createPortal(
+        <div
+          className="fixed inset-0 bg-black/80 backdrop-blur-md z-[350] flex items-center justify-center p-6"
+          dir={dir}
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setClient360Lead(null)}
+        >
+          <div
+            className="bg-[#0E1426] border border-white/10 w-full max-w-6xl rounded-[2.5rem] p-6 max-h-[90vh] overflow-y-auto custom-scrollbar"
+            onClick={(e) => e.stopPropagation()}
+          >
             <div className="flex items-center justify-between mb-5">
               <div>
                 <h3 className="text-xl font-black">{t('client360.title', { name: client360Lead.name })}</h3>
@@ -5051,7 +5074,8 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
               </div>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body,
       )}
       <LeadRepUpdateModal />
     </div>
