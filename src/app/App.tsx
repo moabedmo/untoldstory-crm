@@ -830,16 +830,33 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
     () => payrollApprovalRequests.filter((r) => r.status === 'بانتظار_اعتماد_المالك'),
     [payrollApprovalRequests]
   );
+  const resolveCustodySourceBucket = (c: CustodyFund): 'accountant' | 'production' | 'other' => {
+    const creator = users.find((u) => u.id === c.createdById);
+    if (creator?.role === 'محاسب') return 'accountant';
+    if (creator?.role === 'مدير إنتاج') return 'production';
+    if (c.createdById && c.createdById === c.productionManagerId) return 'production';
+    const pm = users.find((u) => u.id === c.productionManagerId);
+    if (pm?.role === 'مدير إنتاج' && c.status === 'طلب_بانتظار_المالك') return 'production';
+    return 'other';
+  };
   const pendingCustodyForOwner = useMemo(
     () => custodyFunds.filter((c) => c.status === 'طلب_بانتظار_المالك'),
     [custodyFunds]
   );
+  const custodyDraftsNotSentToOwner = useMemo(
+    () => custodyFunds.filter((c) => c.status === 'مسودة' || c.status === 'مرفوض_طلب').length,
+    [custodyFunds]
+  );
   const pendingCustodyFromAccountant = useMemo(
-    () => pendingCustodyForOwner.filter((c) => users.find((u) => u.id === c.createdById)?.role === 'محاسب'),
+    () => pendingCustodyForOwner.filter((c) => resolveCustodySourceBucket(c) === 'accountant'),
     [pendingCustodyForOwner, users]
   );
   const pendingCustodyFromProduction = useMemo(
-    () => pendingCustodyForOwner.filter((c) => users.find((u) => u.id === c.createdById)?.role === 'مدير إنتاج'),
+    () => pendingCustodyForOwner.filter((c) => resolveCustodySourceBucket(c) === 'production'),
+    [pendingCustodyForOwner, users]
+  );
+  const pendingCustodyUnclassified = useMemo(
+    () => pendingCustodyForOwner.filter((c) => resolveCustodySourceBucket(c) === 'other'),
     [pendingCustodyForOwner, users]
   );
   const accCustodyStats = useMemo(() => ({
@@ -1616,16 +1633,98 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
     win.print();
   };
 
+  const renderOwnerCustodyCard = (c: CustodyFund, sourceLabel: string) => (
+    <div key={c.id} className="bg-[#0F1528]/70 border border-white/10 rounded-xl p-3">
+      <p className="font-bold text-white">{t('ownerApprovalsPanel.custodyRequest', { title: c.title })}</p>
+      <p className="text-[10px] text-amber-200/90 mt-0.5">{sourceLabel}</p>
+      <p className="text-xs text-zinc-400 mt-1">
+        {formatCustodyAmountLabel(c)} — {c.productionManagerName || '—'}
+      </p>
+      <p className="text-[11px] text-zinc-500 mt-1 line-clamp-2">{c.description || '—'}</p>
+      <p className="text-[10px] text-zinc-600 mt-1">
+        {t('ownerApprovalsPanel.submittedBy', { name: c.createdByName || '—' })}
+      </p>
+      <div className="flex gap-2 mt-2">
+        <button
+          onClick={async () => {
+            const ok = await ownerApproveCustodyRequest(c.id);
+            if (!ok) {
+              toast.error(t('finance.toastApproveFailed'));
+              return;
+            }
+            toast.success(t('ownerApprovalsPanel.toastCustodyApproved'));
+          }}
+          className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black"
+        >
+          {t('common.approve')}
+        </button>
+        <button
+          onClick={async () => {
+            const ok = await ownerRejectCustodyRequest(c.id, window.prompt(t('finance.rejectReasonOptional')) || undefined);
+            if (!ok) {
+              toast.error(t('finance.toastRejectFailed'));
+              return;
+            }
+            toast.info(t('ownerApprovalsPanel.toastCustodyRejected'));
+          }}
+          className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black"
+        >
+          {t('common.reject')}
+        </button>
+      </div>
+    </div>
+  );
+
   if (isOwnerView) {
     return (
       <div className="animate-in fade-in duration-500 space-y-6">
         <SectionTitle title={t('screens.ownerApprovals.title')} subtitle={t('screens.ownerApprovals.subtitle')} icon={ShieldCheck} />
+        {custodyDraftsNotSentToOwner > 0 && (
+          <div className="bg-amber-500/10 border border-amber-500/30 rounded-2xl p-4 text-sm text-amber-100">
+            <p className="font-black">{t('ownerApprovalsPanel.custodyDraftsHint', { count: custodyDraftsNotSentToOwner })}</p>
+            <p className="text-xs text-amber-200/80 mt-2">{t('ownerApprovalsPanel.custodyDraftsExplain')}</p>
+          </div>
+        )}
+        {pendingCustodyForOwner.length > 0 && (
+          <div className="bg-white/[0.04] border border-[#7C6BFF]/30 rounded-3xl p-5 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="font-black text-lg">{t('ownerApprovalsPanel.custodyPendingTitle')}</h4>
+              <span className="text-xs text-zinc-400">
+                {t('ownerApprovalsPanel.requestCount', { count: pendingCustodyForOwner.length })}
+              </span>
+            </div>
+            <p className="text-xs text-zinc-500">{t('ownerApprovalsPanel.custodyPendingHint')}</p>
+            <div className="space-y-3 max-h-[420px] overflow-y-auto custom-scrollbar">
+              {pendingCustodyFromAccountant.map((c) =>
+                renderOwnerCustodyCard(c, t('ownerApprovalsPanel.sourceAccountant')),
+              )}
+              {pendingCustodyFromProduction.map((c) =>
+                renderOwnerCustodyCard(c, t('ownerApprovalsPanel.sourceProduction')),
+              )}
+              {pendingCustodyUnclassified.map((c) =>
+                renderOwnerCustodyCard(c, t('ownerApprovalsPanel.sourceOther')),
+              )}
+            </div>
+            {onGoToTab && (
+              <button
+                type="button"
+                onClick={() => onGoToTab('approvals')}
+                className="text-xs font-black text-[#A99FFF] hover:underline"
+              >
+                {t('ownerApprovalsPanel.openApprovalsCenter')}
+              </button>
+            )}
+          </div>
+        )}
+        {pendingCustodyForOwner.length === 0 && custodyDraftsNotSentToOwner === 0 && (
+          <p className="text-sm text-zinc-500 px-1">{t('ownerApprovalsPanel.noCustodyPending')}</p>
+        )}
         <div className="grid grid-cols-1 xl:grid-cols-2 gap-5">
           <div className="bg-white/[0.04] border border-white/10 rounded-3xl p-5 space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="font-black text-lg">{t('ownerApprovalsPanel.fromAccountantTitle')}</h4>
               <span className="text-xs text-zinc-400">
-                {t('ownerApprovalsPanel.requestCount', { count: pendingPayrollRequestsForOwner.length + pendingCustodyFromAccountant.length + pendingExpensesFromAccountant.length })}
+                {t('ownerApprovalsPanel.requestCount', { count: pendingPayrollRequestsForOwner.length + pendingExpensesFromAccountant.length })}
               </span>
             </div>
             <div className="space-y-3">
@@ -1660,16 +1759,6 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                   </div>
                 </div>
               ))}
-              {pendingCustodyFromAccountant.map((c) => (
-                <div key={c.id} className="bg-[#0F1528]/70 border border-white/10 rounded-xl p-3">
-                  <p className="font-bold text-white">{t('ownerApprovalsPanel.custodyFromAccountant', { title: c.title })}</p>
-                  <p className="text-xs text-zinc-400 mt-1">{t('ownerApprovalsPanel.directedTo', { amount: c.totalAmount.toLocaleString(dateLocale), currency, manager: c.productionManagerName })}</p>
-                  <div className="flex gap-2 mt-2">
-                    <button onClick={async () => { const ok = await ownerApproveCustodyRequest(c.id); if (!ok) { toast.error(t('finance.toastApproveFailed')); return; } toast.success(t('ownerApprovalsPanel.toastCustodyApproved')); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">{t('common.approve')}</button>
-                    <button onClick={async () => { const ok = await ownerRejectCustodyRequest(c.id, window.prompt(t('finance.rejectReasonOptional')) || undefined); if (!ok) { toast.error(t('finance.toastRejectFailed')); return; } toast.info(t('ownerApprovalsPanel.toastCustodyRejected')); }} className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black">{t('common.reject')}</button>
-                  </div>
-                </div>
-              ))}
               {pendingExpensesFromAccountant.map((e) => {
                 const submitter = expenseSubmitterDisplay(e, users);
                 return (
@@ -1686,7 +1775,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                 </div>
                 );
               })}
-              {pendingPayrollRequestsForOwner.length === 0 && pendingCustodyFromAccountant.length === 0 && pendingExpensesFromAccountant.length === 0 && (
+              {pendingPayrollRequestsForOwner.length === 0 && pendingExpensesFromAccountant.length === 0 && (
                 <p className="text-xs text-zinc-500">{t('ownerApprovalsPanel.noRequestsFromAccountant')}</p>
               )}
             </div>
@@ -1696,21 +1785,10 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             <div className="flex items-center justify-between">
               <h4 className="font-black text-lg">{t('ownerApprovalsPanel.fromProductionTitle')}</h4>
               <span className="text-xs text-zinc-400">
-                {t('ownerApprovalsPanel.requestCount', { count: pendingCustodyFromProduction.length + pendingExpensesFromProduction.length })}
+                {t('ownerApprovalsPanel.requestCount', { count: pendingExpensesFromProduction.length })}
               </span>
             </div>
             <div className="space-y-3">
-              {pendingCustodyFromProduction.map((c) => (
-                <div key={c.id} className="bg-[#0F1528]/70 border border-white/10 rounded-xl p-3">
-                  <p className="font-bold text-white">{t('ownerApprovalsPanel.custodyRequest', { title: c.title })}</p>
-                  <p className="text-xs text-zinc-400 mt-1">{c.totalAmount.toLocaleString(dateLocale)} {currency} — {c.productionManagerName}</p>
-                  <p className="text-[11px] text-zinc-500 mt-1 line-clamp-2">{c.description || '—'}</p>
-                  <div className="flex gap-2 mt-2">
-                    <button onClick={async () => { const ok = await ownerApproveCustodyRequest(c.id); if (!ok) { toast.error(t('finance.toastApproveFailed')); return; } toast.success(t('ownerApprovalsPanel.toastCustodyApproved')); }} className="px-2 py-1 rounded-lg text-xs bg-emerald-500 text-slate-950 font-black">{t('common.approve')}</button>
-                    <button onClick={async () => { const ok = await ownerRejectCustodyRequest(c.id, window.prompt(t('finance.rejectReasonOptional')) || undefined); if (!ok) { toast.error(t('finance.toastRejectFailed')); return; } toast.info(t('ownerApprovalsPanel.toastCustodyRejected')); }} className="px-2 py-1 rounded-lg text-xs bg-rose-500 text-white font-black">{t('common.reject')}</button>
-                  </div>
-                </div>
-              ))}
               {pendingExpensesFromProduction.map((e) => {
                 const submitter = expenseSubmitterDisplay(e, users);
                 return (
@@ -1727,7 +1805,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                 </div>
                 );
               })}
-              {pendingCustodyFromProduction.length === 0 && pendingExpensesFromProduction.length === 0 && (
+              {pendingExpensesFromProduction.length === 0 && (
                 <p className="text-xs text-zinc-500">{t('ownerApprovalsPanel.noRequestsFromProduction')}</p>
               )}
             </div>
