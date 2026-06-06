@@ -25,6 +25,7 @@ import {
   Expense,
   ChartOfAccount,
   ManualJournalLine,
+  ManualJournalEntry,
   PriceQuote,
   PaymentInstallment,
   ClientPayment,
@@ -631,7 +632,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
   const { t } = useTranslation();
   const { dateLocale, dir } = useAppDirection();
   const currency = t('common.currency');
-  const { currentUser, invoices, expenses, leads, users, addInvoice, updateInvoiceStatus, recordInvoiceCollection, addExpense, updateExpenseStatus, approveExpense, rejectExpense, closedMonths, closeMonth, reopenMonth, isMonthClosed, chartOfAccounts, addChartAccount, removeChartAccount, manualJournalEntries, addManualJournalEntry, removeManualJournalEntry, journalCodingRules, setJournalCodingRules, addJournalCodingRule, removeJournalCodingRule, expenseCodingRules, setExpenseCodingRules, customerCodePrefix, setCustomerCodePrefix, expenseSavedViews, setExpenseSavedViews, payrollAutoSendDay, setPayrollAutoSendDay, closedFiscalYears, closeFiscalYear, reopenFiscalYear, getOpeningBalances, saveOpeningBalancesForYear, openingBalancesByYear, getRepSnapshots, attendanceRecords, logAttendance, payrollApprovals, payrollApprovalRequests, getPayrollSalesDiscountTotal, financialReopenRequests, approvePayroll, reopenPayroll, isPayrollApproved, requestPayrollApproval, ownerApprovePayrollRequest, ownerRejectPayrollRequest, requestMonthReopen, ownerApproveMonthReopenRequest, ownerRejectMonthReopenRequest, printBrandingSettings, addEmployee, updateEmployeeSalary, accountingPolicy, updateAccountingPolicy, priceQuotes, custodyFunds, custodyAccountByCategory, updateCustodyAccountByCategory, createCustodyFund, updateCustodyDraft, submitCustodyDraftToOwner, submitAllCustodyDraftsToOwner, ownerApproveCustodyRequest, ownerRejectCustodyRequest, accountantRecordCustodyPayment, accountantApproveCustodySettlement, accountantRejectCustodySettlement } = useData();
+  const { currentUser, invoices, expenses, leads, users, addInvoice, updateInvoiceStatus, recordInvoiceCollection, addExpense, updateExpenseStatus, approveExpense, rejectExpense, closedMonths, closeMonth, reopenMonth, isMonthClosed, chartOfAccounts, addChartAccount, removeChartAccount, manualJournalEntries, addManualJournalEntry, updateManualJournalEntry, removeManualJournalEntry, getManualJournalModifyBlockReason, journalCodingRules, setJournalCodingRules, addJournalCodingRule, removeJournalCodingRule, expenseCodingRules, setExpenseCodingRules, customerCodePrefix, setCustomerCodePrefix, expenseSavedViews, setExpenseSavedViews, payrollAutoSendDay, setPayrollAutoSendDay, closedFiscalYears, closeFiscalYear, reopenFiscalYear, getOpeningBalances, saveOpeningBalancesForYear, openingBalancesByYear, getRepSnapshots, attendanceRecords, logAttendance, payrollApprovals, payrollApprovalRequests, getPayrollSalesDiscountTotal, financialReopenRequests, approvePayroll, reopenPayroll, isPayrollApproved, requestPayrollApproval, ownerApprovePayrollRequest, ownerRejectPayrollRequest, requestMonthReopen, ownerApproveMonthReopenRequest, ownerRejectMonthReopenRequest, printBrandingSettings, addEmployee, updateEmployeeSalary, accountingPolicy, updateAccountingPolicy, priceQuotes, custodyFunds, custodyAccountByCategory, updateCustodyAccountByCategory, createCustodyFund, updateCustodyDraft, submitCustodyDraftToOwner, submitAllCustodyDraftsToOwner, ownerApproveCustodyRequest, ownerRejectCustodyRequest, accountantRecordCustodyPayment, accountantApproveCustodySettlement, accountantRejectCustodySettlement } = useData();
   const [activeFinanceTab, setActiveFinanceTab] = useState<'invoices' | 'expenses' | 'ledger' | 'reports' | 'coa' | 'journals' | 'reps' | 'codebook' | 'custody'>('invoices');
   const [isCreateInvoiceOpen, setIsCreateInvoiceOpen] = useState(false);
   const [isCreateExpenseOpen, setIsCreateExpenseOpen] = useState(false);
@@ -683,6 +684,8 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
   const [expensePaymentPickId, setExpensePaymentPickId] = useState<string | null>(null);
   const [newExpenseViewName, setNewExpenseViewName] = useState('');
   const [newJournalCoding, setNewJournalCoding] = useState({ title: '', accountCode: '', costCenter: 'عام' });
+  const [printAccountCode, setPrintAccountCode] = useState('1010');
+  const [editingJournalId, setEditingJournalId] = useState<string | null>(null);
   const [custodyForm, setCustodyForm] = useState({
     title: '',
     description: '',
@@ -1110,6 +1113,58 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
     if (journalFocusId) return accountingEntries.filter((e) => e.journalId === journalFocusId);
     return accountingEntries;
   }, [accountingEntries, journalFocusId]);
+  const accountLedgers = useMemo(() => {
+    const map = new Map<string, (GlRow & { runningBalance: number })[]>();
+    const openingByCode = new Map(
+      getOpeningBalances(currentYear).map((ob) => [ob.accountCode, Number(ob.balance) || 0]),
+    );
+    const codes = new Set<string>();
+    chartOfAccounts.forEach((a) => codes.add(a.code));
+    accountingEntries.forEach((e) => {
+      const code = e.accountCode || resolveAccountCode(e.account, chartOfAccounts);
+      if (code) codes.add(code);
+    });
+    codes.forEach((code) => {
+      let running = openingByCode.get(code) || 0;
+      const rows = accountingEntries
+        .filter((e) => (e.accountCode || resolveAccountCode(e.account, chartOfAccounts)) === code)
+        .sort((a, b) => {
+          const d = new Date(a.date).getTime() - new Date(b.date).getTime();
+          if (d !== 0) return d;
+          return a.note.localeCompare(b.note);
+        })
+        .map((e) => {
+          running += e.debit - e.credit;
+          return { ...e, runningBalance: running };
+        });
+      map.set(code, rows);
+    });
+    return map;
+  }, [accountingEntries, chartOfAccounts, currentYear, getOpeningBalances, openingBalancesByYear]);
+  const pnlAccountBreakdown = useMemo(() => {
+    const revenue: { code: string; name: string; amount: number }[] = [];
+    const expense: { code: string; name: string; amount: number }[] = [];
+    trialBalance.forEach((row) => {
+      const acc = chartOfAccounts.find((a) => a.name === row.account);
+      if (!acc) return;
+      if (acc.type === 'revenue') {
+        const amount = row.credit - row.debit;
+        if (Math.abs(amount) > 0.001) revenue.push({ code: acc.code, name: acc.name, amount });
+      }
+      if (acc.type === 'expense') {
+        const amount = row.debit - row.credit;
+        if (Math.abs(amount) > 0.001) expense.push({ code: acc.code, name: acc.name, amount });
+      }
+    });
+    return { revenue, expense };
+  }, [trialBalance, chartOfAccounts]);
+  const trialBalanceTotals = useMemo(
+    () => ({
+      debit: trialBalance.reduce((s, r) => s + r.debit, 0),
+      credit: trialBalance.reduce((s, r) => s + r.credit, 0),
+    }),
+    [trialBalance],
+  );
   const nextYearOpening = useMemo(
     () => trialBalance.map(t => ({ accountCode: t.account, balance: t.balance })),
     [trialBalance]
@@ -1514,7 +1569,52 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
     }));
   };
 
-  const handleCreateJournal = async () => {
+  const resetJournalForm = () => {
+    setJournalForm({
+      date: new Date().toISOString().slice(0, 10),
+      description: '',
+      lines: [
+        { accountCode: chartOfAccounts[0]?.code || '1010', debit: '', credit: '', costCenter: 'عام' },
+        { accountCode: chartOfAccounts[1]?.code || '1120', debit: '', credit: '', costCenter: 'عام' },
+      ],
+    });
+  };
+
+  const journalModifyBlockMessage = (reason: string) => {
+    if (reason === 'linked') return t('finance.toastJournalLinkedBlock');
+    if (reason === 'closed_month') return t('finance.toastJournalClosedMonth');
+    if (reason === 'closed_year') return t('finance.toastJournalClosedYear');
+    if (reason === 'missing') return t('finance.toastJournalMissing');
+    return t('finance.toastJournalDeleteFailed');
+  };
+
+  const startEditJournal = (entry: ManualJournalEntry) => {
+    const block = getManualJournalModifyBlockReason(entry.id);
+    if (block) {
+      toast.error(journalModifyBlockMessage(block));
+      return;
+    }
+    setEditingJournalId(entry.id);
+    setJournalFocusId(entry.id);
+    setJournalForm({
+      date: entry.date.slice(0, 10),
+      description: entry.description,
+      lines: entry.lines.map((line) => ({
+        accountCode: line.accountCode,
+        debit: line.debit > 0 ? String(line.debit) : '',
+        credit: line.credit > 0 ? String(line.credit) : '',
+        costCenter: line.costCenter || 'عام',
+      })),
+    });
+  };
+
+  const cancelEditJournal = () => {
+    setEditingJournalId(null);
+    setJournalFocusId(null);
+    resetJournalForm();
+  };
+
+  const handleSaveJournal = async () => {
     const lines: ManualJournalLine[] = journalForm.lines.map(l => ({
       accountCode: l.accountCode,
       debit: Number(l.debit) || 0,
@@ -1531,23 +1631,30 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
       toast.error(t('finance.toastJournalUnbalanced'));
       return;
     }
-    const ok = await addManualJournalEntry({
+    const payload = {
       date: new Date(journalForm.date).toISOString(),
       description: journalForm.description.trim(),
       lines,
-    });
+    };
+    if (editingJournalId) {
+      const ok = await updateManualJournalEntry(editingJournalId, payload);
+      if (!ok) {
+        const block = getManualJournalModifyBlockReason(editingJournalId, payload.date);
+        toast.error(block ? journalModifyBlockMessage(block) : t('finance.toastJournalEditFailed'));
+        return;
+      }
+      toast.success(t('finance.toastJournalUpdated', { id: editingJournalId }));
+      setEditingJournalId(null);
+      setJournalFocusId(null);
+      resetJournalForm();
+      return;
+    }
+    const ok = await addManualJournalEntry(payload);
     if (!ok) {
       toast.error(t('finance.toastJournalSaveFailed'));
       return;
     }
-    setJournalForm({
-      date: new Date().toISOString().slice(0, 10),
-      description: '',
-      lines: [
-        { accountCode: chartOfAccounts[0]?.code || '1010', debit: '', credit: '', costCenter: 'عام' },
-        { accountCode: chartOfAccounts[1]?.code || '1120', debit: '', credit: '', costCenter: 'عام' },
-      ],
-    });
+    resetJournalForm();
     toast.success(t('finance.toastJournalSaved'));
   };
 
@@ -1759,6 +1866,209 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
     win.document.close();
     win.focus();
     win.print();
+  };
+
+  const openFinancePrintDocument = (title: string, bodyContent: string) => {
+    const company = escapeHtml(printBrandingSettings.companyName || t('repDash.printDefaultCompany'));
+    const header = escapeHtml(printBrandingSettings.reportHeader || t('repDash.printDefaultHeader'));
+    const footer = escapeHtml(printBrandingSettings.reportFooter || '');
+    const primaryColor = printBrandingSettings.primaryColor || '#4F46E5';
+    const logo = printBrandingSettings.logoDataUrl
+      ? `<img src="${printBrandingSettings.logoDataUrl}" alt="logo" style="height:44px;max-width:140px;object-fit:contain;" />`
+      : '';
+    const printDate = new Date().toLocaleString(dateLocale);
+    const signatureName = escapeHtml(printBrandingSettings.signatureName || '');
+    const signatureTitle = escapeHtml(printBrandingSettings.signatureTitle || '');
+    const html = `
+      <html dir="${dir}">
+      <head>
+        <meta charset="utf-8" />
+        <title>${escapeHtml(title)}</title>
+        <style>
+          :root { --primary-color: ${primaryColor}; }
+          body { font-family: Arial, sans-serif; padding: 20px; color: #111; }
+          h2, h3 { margin: 8px 0; }
+          p { margin: 4px 0 10px; color: #444; }
+          .meta { color: #555; font-size: 12px; margin-bottom: 12px; }
+          .cards { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin: 12px 0 16px; }
+          .card { border: 1px solid #ddd; border-radius: 8px; padding: 10px; font-size: 12px; }
+          .card b { display: block; margin-top: 4px; font-size: 16px; }
+          table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+          th, td { border: 1px solid #ddd; padding: 8px; text-align: right; font-size: 12px; }
+          th { background: #f5f5f5; }
+          tfoot td { font-weight: bold; background: #fafafa; }
+          .page-number { text-align:left; font-size:11px; color:#666; margin-top:8px; }
+          @media print { .page-number::after { content: counter(page) " / " counter(pages); } }
+        </style>
+      </head>
+      <body>
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;border-bottom:2px solid var(--primary-color);padding-bottom:10px;margin-bottom:12px;">
+          <div>
+            <h3 style="margin:0;">${company}</h3>
+            <p style="margin:4px 0 0;color:#666;">${header}</p>
+          </div>
+          ${logo}
+        </div>
+        ${printBrandingSettings.showPrintDate ? `<p class="meta">${escapeHtml(t('finance.payrollPrintDate', { date: printDate }))}</p>` : ''}
+        ${bodyContent}
+        ${(signatureName || signatureTitle) ? `
+          <div style="margin-top:24px;display:flex;justify-content:flex-end;">
+            <div style="text-align:center;min-width:220px;">
+              <div style="height:48px;border-bottom:1px dashed #bbb;margin-bottom:6px;"></div>
+              ${signatureName ? `<div style="font-weight:700;">${signatureName}</div>` : ''}
+              ${signatureTitle ? `<div style="font-size:12px;color:#666;">${signatureTitle}</div>` : ''}
+            </div>
+          </div>
+        ` : ''}
+        <div style="margin-top:14px;padding-top:10px;border-top:1px solid #ddd;color:#666;font-size:12px;">${footer}</div>
+        ${printBrandingSettings.showPageNumbers ? '<div class="page-number"></div>' : ''}
+      </body>
+      </html>
+    `;
+    const win = window.open('', '_blank');
+    if (!win) {
+      toast.error(t('finance.printPopupBlocked'));
+      return;
+    }
+    win.document.write(html);
+    win.document.close();
+    win.focus();
+    win.print();
+  };
+
+  const printGlIncomeStatement = () => {
+    const revenueRows = pnlAccountBreakdown.revenue
+      .map((r) => `<tr><td>${escapeHtml(r.code)}</td><td>${escapeHtml(r.name)}</td><td>${r.amount.toLocaleString(dateLocale)} ${escapeHtml(currency)}</td></tr>`)
+      .join('');
+    const expenseRows = pnlAccountBreakdown.expense
+      .map((r) => `<tr><td>${escapeHtml(r.code)}</td><td>${escapeHtml(r.name)}</td><td>${r.amount.toLocaleString(dateLocale)} ${escapeHtml(currency)}</td></tr>`)
+      .join('');
+    openFinancePrintDocument(
+      t('finance.reportPnlGlTitle'),
+      `
+        <h2>${escapeHtml(t('finance.reportPnlGlTitle'))}</h2>
+        <p class="meta">${escapeHtml(t('finance.reportPnlGlHint'))} — ${escapeHtml(t('finance.printYearLabel', { year: currentYear }))}</p>
+        <div class="cards">
+          <div class="card">${escapeHtml(t('finance.glRevenue'))}<b>${glSummary.revenue.toLocaleString(dateLocale)} ${escapeHtml(currency)}</b></div>
+          <div class="card">${escapeHtml(t('finance.glExpenses'))}<b>${glSummary.expense.toLocaleString(dateLocale)} ${escapeHtml(currency)}</b></div>
+          <div class="card">${escapeHtml(t('finance.glNetProfit'))}<b>${glSummary.netProfit.toLocaleString(dateLocale)} ${escapeHtml(currency)}</b></div>
+        </div>
+        <h3>${escapeHtml(t('finance.printRevenueAccounts'))}</h3>
+        <table><thead><tr><th>${escapeHtml(t('finance.colCode'))}</th><th>${escapeHtml(t('finance.colAccount'))}</th><th>${escapeHtml(t('finance.colAmount'))}</th></tr></thead><tbody>${revenueRows || `<tr><td colspan="3">${escapeHtml(t('finance.printNoRows'))}</td></tr>`}</tbody></table>
+        <h3>${escapeHtml(t('finance.printExpenseAccounts'))}</h3>
+        <table><thead><tr><th>${escapeHtml(t('finance.colCode'))}</th><th>${escapeHtml(t('finance.colAccount'))}</th><th>${escapeHtml(t('finance.colAmount'))}</th></tr></thead><tbody>${expenseRows || `<tr><td colspan="3">${escapeHtml(t('finance.printNoRows'))}</td></tr>`}</tbody></table>
+      `,
+    );
+  };
+
+  const printTrialBalanceReport = () => {
+    const rows = trialBalance
+      .map(
+        (r) =>
+          `<tr><td>${escapeHtml(r.account)}</td><td>${r.debit.toLocaleString(dateLocale)}</td><td>${r.credit.toLocaleString(dateLocale)}</td><td>${r.balance.toLocaleString(dateLocale)}</td></tr>`,
+      )
+      .join('');
+    openFinancePrintDocument(
+      t('finance.trialBalanceTitle'),
+      `
+        <h2>${escapeHtml(t('finance.trialBalanceTitle'))}</h2>
+        <p class="meta">${escapeHtml(t('finance.printYearLabel', { year: currentYear }))}</p>
+        <table>
+          <thead>
+            <tr>
+              <th>${escapeHtml(t('finance.colAccount'))}</th>
+              <th>${escapeHtml(t('finance.colDebit'))}</th>
+              <th>${escapeHtml(t('finance.colCredit'))}</th>
+              <th>${escapeHtml(t('finance.colBalance'))}</th>
+            </tr>
+          </thead>
+          <tbody>${rows || `<tr><td colspan="4">${escapeHtml(t('finance.printNoRows'))}</td></tr>`}</tbody>
+          <tfoot>
+            <tr>
+              <td>${escapeHtml(t('finance.printTotals'))}</td>
+              <td>${trialBalanceTotals.debit.toLocaleString(dateLocale)}</td>
+              <td>${trialBalanceTotals.credit.toLocaleString(dateLocale)}</td>
+              <td>${(trialBalanceTotals.debit - trialBalanceTotals.credit).toLocaleString(dateLocale)}</td>
+            </tr>
+          </tfoot>
+        </table>
+      `,
+    );
+  };
+
+  const printCashPositionReport = () => {
+    const rows = [...bankRunningLedger]
+      .reverse()
+      .map(
+        (r) =>
+          `<tr><td>${escapeHtml(new Date(r.date).toLocaleDateString(dateLocale))}</td><td>${escapeHtml(r.note)}</td><td>${r.debit > 0 ? r.debit.toLocaleString(dateLocale) : '—'}</td><td>${r.credit > 0 ? r.credit.toLocaleString(dateLocale) : '—'}</td><td>${r.runningBalance.toLocaleString(dateLocale)}</td></tr>`,
+      )
+      .join('');
+    openFinancePrintDocument(
+      t('finance.printCashPositionTitle'),
+      `
+        <h2>${escapeHtml(t('finance.printCashPositionTitle'))}</h2>
+        <p class="meta">${escapeHtml(t('finance.bankLedgerHint'))}</p>
+        <div class="cards">
+          <div class="card">${escapeHtml(t('finance.bankCashGlBalance'))}<b>${glSummary.cashBalance.toLocaleString(dateLocale)} ${escapeHtml(currency)}</b></div>
+          <div class="card">${escapeHtml(t('finance.receivables'))}<b>${accountingReport.receivables.toLocaleString(dateLocale)} ${escapeHtml(currency)}</b></div>
+          <div class="card">${escapeHtml(t('finance.payables'))}<b>${accountingReport.payables.toLocaleString(dateLocale)} ${escapeHtml(currency)}</b></div>
+        </div>
+        <h3>${escapeHtml(t('finance.bankLedgerTitle'))}</h3>
+        <table>
+          <thead>
+            <tr>
+              <th>${escapeHtml(t('finance.colDate'))}</th>
+              <th>${escapeHtml(t('finance.colNote'))}</th>
+              <th>${escapeHtml(t('finance.colDebit'))}</th>
+              <th>${escapeHtml(t('finance.colCredit'))}</th>
+              <th>${escapeHtml(t('finance.colRunningBalance'))}</th>
+            </tr>
+          </thead>
+          <tbody>${rows || `<tr><td colspan="5">${escapeHtml(t('finance.bankLedgerEmpty'))}</td></tr>`}</tbody>
+        </table>
+      `,
+    );
+  };
+
+  const printGlAccountStatement = (accountCode: string) => {
+    const code = accountCode.trim();
+    const acc = chartOfAccounts.find((a) => a.code === code);
+    const label = acc?.name || code;
+    const opening =
+      getOpeningBalances(currentYear).find((ob) => ob.accountCode === code)?.balance ?? 0;
+    const rows = accountLedgers.get(code) || [];
+    const closing = rows.length > 0 ? rows[rows.length - 1].runningBalance : Number(opening) || 0;
+    const bodyRows = rows
+      .map(
+        (r) =>
+          `<tr><td>${escapeHtml(new Date(r.date).toLocaleDateString(dateLocale))}</td><td>${escapeHtml(r.note)}</td><td>${r.debit > 0 ? r.debit.toLocaleString(dateLocale) : '—'}</td><td>${r.credit > 0 ? r.credit.toLocaleString(dateLocale) : '—'}</td><td>${r.runningBalance.toLocaleString(dateLocale)}</td></tr>`,
+      )
+      .join('');
+    openFinancePrintDocument(
+      t('finance.printAccountStatementTitle', { code, name: label }),
+      `
+        <h2>${escapeHtml(t('finance.printAccountStatementTitle', { code, name: label }))}</h2>
+        <p class="meta">${escapeHtml(t('finance.printYearLabel', { year: currentYear }))}</p>
+        <div class="cards">
+          <div class="card">${escapeHtml(t('finance.printOpeningBalance'))}<b>${Number(opening).toLocaleString(dateLocale)} ${escapeHtml(currency)}</b></div>
+          <div class="card">${escapeHtml(t('finance.printClosingBalance'))}<b>${closing.toLocaleString(dateLocale)} ${escapeHtml(currency)}</b></div>
+          <div class="card">${escapeHtml(t('finance.printMovementsCount'))}<b>${rows.length}</b></div>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>${escapeHtml(t('finance.colDate'))}</th>
+              <th>${escapeHtml(t('finance.colNote'))}</th>
+              <th>${escapeHtml(t('finance.colDebit'))}</th>
+              <th>${escapeHtml(t('finance.colCredit'))}</th>
+              <th>${escapeHtml(t('finance.colRunningBalance'))}</th>
+            </tr>
+          </thead>
+          <tbody>${bodyRows || `<tr><td colspan="5">${escapeHtml(t('finance.printNoRows'))}</td></tr>`}</tbody>
+        </table>
+      `,
+    );
   };
 
   const renderOwnerCustodyCard = (c: CustodyFund, sourceLabel: string) => (
@@ -2011,7 +2321,7 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
           <button onClick={() => setActiveFinanceTab('custody')} className={`px-4 py-2 rounded-xl text-sm font-black transition-all ${activeFinanceTab === 'custody' ? 'bg-[#7C6BFF] text-white shadow-lg shadow-[#7C6BFF]/25' : 'bg-[#0F1528] border border-white/10 text-zinc-300 hover:border-[#7C6BFF]/35'}`}>{t('finance.tabCustody')}</button>
         </div>
         <div className="flex flex-wrap items-center gap-2 pt-1 border-t border-white/10">
-          <button onClick={() => (activeFinanceTab === 'reps' ? printPayrollReport() : window.print())} className="px-4 py-2 rounded-xl text-sm font-black bg-[#0F1528] border border-white/10 text-zinc-200 hover:border-white/20 transition-all">{t('finance.print')}</button>
+          <button onClick={() => (activeFinanceTab === 'reps' ? printPayrollReport() : activeFinanceTab === 'reports' ? printGlIncomeStatement() : window.print())} className="px-4 py-2 rounded-xl text-sm font-black bg-[#0F1528] border border-white/10 text-zinc-200 hover:border-white/20 transition-all">{t('finance.print')}</button>
           <button onClick={exportExecutiveReport} className="px-4 py-2 rounded-xl text-sm font-black bg-[#0F1528] border border-white/10 text-zinc-200 hover:border-white/20 transition-all">{t('finance.executiveReport')}</button>
           <button onClick={exportFinanceCsv} className="px-4 py-2 rounded-xl text-sm font-black bg-[#0F1528] border border-white/10 text-zinc-200 hover:border-white/20 transition-all">{t('finance.exportCsv')}</button>
         </div>
@@ -3083,6 +3393,14 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             )}
             {activeFinanceTab === 'journals' && (
               <div className="p-6 space-y-4">
+                {editingJournalId && (
+                  <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-amber-400/35 bg-amber-500/10 px-4 py-3">
+                    <p className="text-sm font-black text-amber-200">{t('finance.editingJournalBanner', { id: editingJournalId })}</p>
+                    <button type="button" onClick={cancelEditJournal} className="px-3 py-1.5 rounded-lg text-xs font-black bg-[#0F1528] border border-white/10 text-zinc-200">
+                      {t('finance.cancelEditJournal')}
+                    </button>
+                  </div>
+                )}
                 {journalCodingRules.length > 0 && (
                   <div className="bg-[#0B1020]/70 border border-white/10 rounded-2xl p-3 flex flex-wrap items-center gap-2">
                     <span className="text-xs text-zinc-400">{t('finance.applyReadyCode')}</span>
@@ -3122,10 +3440,17 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                     </div>
                   ))}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <button onClick={addJournalLine} className="px-4 py-2 rounded-xl bg-slate-800 border border-slate-700 text-sm font-black">{t('finance.addLine')}</button>
-                  <button onClick={handleCreateJournal} className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 text-sm font-black">{t('finance.saveJournal')}</button>
-                  {journalFocusId && (
+                  <button onClick={handleSaveJournal} className="px-4 py-2 rounded-xl bg-emerald-500 text-slate-950 text-sm font-black">
+                    {editingJournalId ? t('finance.saveJournalChanges') : t('finance.saveJournal')}
+                  </button>
+                  {editingJournalId && (
+                    <button type="button" onClick={cancelEditJournal} className="px-4 py-2 rounded-xl bg-[#0F1528] border border-white/10 text-sm font-black text-zinc-200">
+                      {t('finance.cancelEditJournal')}
+                    </button>
+                  )}
+                  {journalFocusId && !editingJournalId && (
                     <button
                       onClick={() => setJournalFocusId(null)}
                       className="px-4 py-2 rounded-xl bg-[#0F1528] border border-white/10 text-sm font-black text-zinc-200"
@@ -3163,20 +3488,38 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
                           <p className="text-xs text-zinc-500">{new Date(entry.date).toLocaleDateString(dateLocale)}</p>
                         </div>
                         {(currentUser?.role === 'محاسب' || currentUser?.role === 'مالك') && (
-                          <button
-                            type="button"
-                            onClick={async () => {
-                              const ok = await removeManualJournalEntry(entry.id);
-                              if (!ok) {
-                                toast.error(t('finance.toastJournalDeleteFailed'));
-                              } else {
-                                toast.success(t('finance.journalDeleted'));
-                              }
-                            }}
-                            className="shrink-0 rounded-lg border border-rose-500/40 bg-rose-500/15 px-2 py-1 text-[10px] font-black text-rose-200 hover:bg-rose-500/25"
-                          >
-                            {t('common.delete')}
-                          </button>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => startEditJournal(entry)}
+                              disabled={!!getManualJournalModifyBlockReason(entry.id)}
+                              className="rounded-lg border border-indigo-500/40 bg-indigo-500/15 px-2 py-1 text-[10px] font-black text-indigo-200 hover:bg-indigo-500/25 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {t('finance.editJournal')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={async () => {
+                                const block = getManualJournalModifyBlockReason(entry.id);
+                                if (block) {
+                                  toast.error(journalModifyBlockMessage(block));
+                                  return;
+                                }
+                                if (!window.confirm(t('finance.deleteJournalConfirm', { id: entry.id }))) return;
+                                const ok = await removeManualJournalEntry(entry.id);
+                                if (!ok) {
+                                  toast.error(t('finance.toastJournalDeleteFailed'));
+                                } else {
+                                  if (editingJournalId === entry.id) cancelEditJournal();
+                                  toast.success(t('finance.journalDeleted'));
+                                }
+                              }}
+                              disabled={!!getManualJournalModifyBlockReason(entry.id)}
+                              className="rounded-lg border border-rose-500/40 bg-rose-500/15 px-2 py-1 text-[10px] font-black text-rose-200 hover:bg-rose-500/25 disabled:opacity-40 disabled:cursor-not-allowed"
+                            >
+                              {t('common.delete')}
+                            </button>
+                          </div>
                         )}
                       </div>
                       {entry.lines.map((line, li) => (
@@ -3232,6 +3575,30 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
             )}
             {activeFinanceTab === 'reports' && (
               <div className="p-8 space-y-6">
+                <div className="bg-slate-950/40 border border-indigo-500/25 rounded-2xl p-5 space-y-4">
+                  <div>
+                    <h5 className="font-black text-lg">{t('finance.printReportsPanelTitle')}</h5>
+                    <p className="text-xs text-zinc-500 mt-1">{t('finance.printReportsPanelHint')}</p>
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button type="button" onClick={printGlIncomeStatement} className="px-4 py-2 rounded-xl text-sm font-black bg-indigo-500/20 border border-indigo-400/30 text-indigo-200 hover:bg-indigo-500/30">{t('finance.printIncomeStatement')}</button>
+                    <button type="button" onClick={printTrialBalanceReport} className="px-4 py-2 rounded-xl text-sm font-black bg-[#0F1528] border border-white/10 text-zinc-200 hover:border-white/20">{t('finance.printTrialBalance')}</button>
+                    <button type="button" onClick={printCashPositionReport} className="px-4 py-2 rounded-xl text-sm font-black bg-emerald-500/15 border border-emerald-400/25 text-emerald-200 hover:bg-emerald-500/25">{t('finance.printCashPosition')}</button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t border-white/10">
+                    <label className="text-xs text-zinc-400">{t('finance.printSelectAccount')}</label>
+                    <select
+                      value={printAccountCode}
+                      onChange={(e) => setPrintAccountCode(e.target.value)}
+                      className="min-w-[220px] bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-sm"
+                    >
+                      {chartOfAccounts.map((acc) => (
+                        <option key={`print-acc-${acc.code}`} value={acc.code}>{acc.code} — {acc.name}</option>
+                      ))}
+                    </select>
+                    <button type="button" onClick={() => printGlAccountStatement(printAccountCode)} className="px-4 py-2 rounded-xl text-sm font-black bg-amber-500/15 border border-amber-400/25 text-amber-200 hover:bg-amber-500/25">{t('finance.printAccountStatement')}</button>
+                  </div>
+                </div>
                 {canManageOpeningBalances && (
                   <div id="opening-balances-panel" className="bg-slate-950/30 border border-indigo-500/20 rounded-2xl p-6 space-y-4">
                     <div className="flex flex-wrap items-start justify-between gap-3">

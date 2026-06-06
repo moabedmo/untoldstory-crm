@@ -3,6 +3,7 @@ import { isSupabaseDirectMode } from '@/config/supabaseMode';
 import {
   fetchManualJournalsSb,
   createManualJournalSb,
+  patchManualJournalSb,
   deleteManualJournalSb,
 } from '@/lib/supabase/directApiSb';
 
@@ -46,6 +47,23 @@ export async function createManualJournalApi(
   });
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(typeof data.error === 'string' ? data.error : 'create journal');
+  return data.journal as import('@/app/context/DataContext').ManualJournalEntry;
+}
+
+export async function updateManualJournalApi(
+  id: string,
+  patch: { date: string; description: string; lines: import('@/app/context/DataContext').ManualJournalLine[] },
+): Promise<import('@/app/context/DataContext').ManualJournalEntry> {
+  if (isSupabaseDirectMode()) {
+    return patchManualJournalSb(id, patch);
+  }
+  const r = await fetch(`${getApiBaseUrl()}/api/manual-journals/${encodeURIComponent(id)}`, {
+    method: 'PATCH',
+    headers: authHeaders(),
+    body: JSON.stringify(patch),
+  });
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(typeof data.error === 'string' ? data.error : 'update journal');
   return data.journal as import('@/app/context/DataContext').ManualJournalEntry;
 }
 

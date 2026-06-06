@@ -953,6 +953,35 @@ export async function createManualJournalSb(body: {
   return mapManualJournalFromRow(data as Record<string, unknown>);
 }
 
+export async function patchManualJournalSb(
+  id: string,
+  body: { description: string; lines: unknown[]; date?: string },
+): Promise<ManualJournalEntry> {
+  const actor = await getSupabaseActor();
+  if (actor.role !== 'محاسب' && actor.role !== 'مالك') throw new Error('غير مصرح');
+  const journalId = String(id || '').trim();
+  if (!journalId) throw new Error('معرّف القيد مطلوب');
+  const description = String(body.description || '').trim();
+  const lines = Array.isArray(body.lines) ? body.lines : [];
+  if (!description || lines.length === 0) throw new Error('الوصف والبنود مطلوبان');
+  const journalCheck = validateManualJournalLines(lines);
+  if (!journalCheck.ok) throw new Error(journalCheck.error);
+  const dateIso = body.date ? String(body.date) : new Date().toISOString();
+  const sb = getSupabase();
+  const { data, error } = await sb
+    .from('manual_journal_entries')
+    .update({
+      date: dateIso,
+      description,
+      lines_json: journalCheck.lines,
+    })
+    .eq('id', journalId)
+    .select('*')
+    .single();
+  if (error || !data) throw new Error(error?.message || 'فشل التحديث');
+  return mapManualJournalFromRow(data as Record<string, unknown>);
+}
+
 export async function deleteManualJournalSb(id: string): Promise<void> {
   const actor = await getSupabaseActor();
   if (actor.role !== 'محاسب' && actor.role !== 'مالك') throw new Error('غير مصرح');

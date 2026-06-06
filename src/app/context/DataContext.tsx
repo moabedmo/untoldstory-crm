@@ -36,7 +36,12 @@ import { fetchInvoicesApi, createInvoiceApi, patchInvoiceApi } from '@/lib/api/i
 import { fetchExpensesApi, createExpenseApi, patchExpenseApi, deleteExpenseApi } from '@/lib/api/expensesApi';
 import { fetchPriceQuotesApi, createPriceQuoteApi, patchPriceQuoteApi } from '@/lib/api/priceQuotesApi';
 import { fetchAccountingPolicyApi, patchAccountingPolicyApi } from '@/lib/api/accountingPolicyApi';
-import { fetchManualJournalsApi, createManualJournalApi, deleteManualJournalApi } from '@/lib/api/manualJournalsApi';
+import {
+  fetchManualJournalsApi,
+  createManualJournalApi,
+  updateManualJournalApi,
+  deleteManualJournalApi,
+} from '@/lib/api/manualJournalsApi';
 import { fetchClosedMonthsApi, postCloseMonthApi, postReopenMonthApi } from '@/lib/api/closedMonthsApi';
 import { fetchMonthlyTargetsApi, patchMonthlyTargetApi } from '@/lib/api/monthlyTargetsApi';
 import { fetchCustodySettingsApi, patchCustodySettingsApi } from '@/lib/api/custodySettingsApi';
@@ -1276,7 +1281,9 @@ interface DataContextType {
   removeJournalCodingRule: (id: string) => Promise<boolean>;
   manualJournalEntries: ManualJournalEntry[];
   addManualJournalEntry: (entry: Omit<ManualJournalEntry, 'id'>) => Promise<boolean>;
+  updateManualJournalEntry: (id: string, entry: Omit<ManualJournalEntry, 'id'>) => Promise<boolean>;
   removeManualJournalEntry: (id: string) => Promise<boolean>;
+  getManualJournalModifyBlockReason: (id: string, newDate?: string) => string | null;
   journalCodingRules: JournalCodingRule[];
   setJournalCodingRules: React.Dispatch<React.SetStateAction<JournalCodingRule[]>>;
   expenseCodingRules: ExpenseCodingRule[];
@@ -6429,25 +6436,69 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   };
 
-  const addManualJournalEntry = async (entry: Omit<ManualJournalEntry, 'id'>): Promise<boolean> => {
-    if (!(currentUser?.role === 'محاسب' || currentUser?.role === 'مالك')) return false;
-    const entryYear = new Date(entry.date).getFullYear().toString();
-    if (closedFiscalYears.includes(entryYear)) return false;
+  const getManualJournalModifyBlockReason = useCallback(
+    (id: string, newDate?: string): string | null => {
+      const entry = manualJournalEntries.find((e) => e.id === id);
+      if (!entry) return 'missing';
+      const entryYear = new Date(entry.date).getFullYear().toString();
+      if (closedFiscalYears.includes(entryYear)) return 'closed_year';
+      const monthKey = getMonthKey(`${entry.date}T12:00:00.000Z`);
+      if (isMonthClosed(monthKey)) return 'closed_month';
+      if (newDate) {
+        const newYear = new Date(newDate).getFullYear().toString();
+        if (closedFiscalYears.includes(newYear)) return 'closed_year';
+        const newMonthKey = getMonthKey(`${newDate}T12:00:00.000Z`);
+        if (isMonthClosed(newMonthKey)) return 'closed_month';
+      }
+      const refInvoice = invoices.some((inv) =>
+        (inv.collections || []).some((c) => c.journalEntryId === id),
+      );
+      const refCustody = custodyFunds.some(
+        (f) =>
+          f.journalEntryPaymentId === id ||
+          f.journalEntrySettlementId === id ||
+          f.journalEntryId === id,
+      );
+      if (refInvoice || refCustody) return 'linked';
+      return null;
+    },
+    [manualJournalEntries, closedFiscalYears, isMonthClosed, invoices, custodyFunds],
+  );
+
+  const normalizeManualJournalPayload = (entry: Omit<ManualJournalEntry, 'id'>) => {
     const validAccountCodes = new Set(chartOfAccounts.map((a) => a.code));
     const normalizedLines = entry.lines.map((line) => ({
       ...line,
       accountCode: (line.accountCode || '').trim(),
       costCenter: (line.costCenter || 'عام').trim() || 'عام',
+      debit: Number(line.debit) || 0,
+      credit: Number(line.credit) || 0,
     }));
-    if (normalizedLines.length === 0) return false;
-    const hasInvalidCode = normalizedLines.some((line) => !line.accountCode || !validAccountCodes.has(line.accountCode));
-    if (hasInvalidCode) return false;
-    const totalDebit = normalizedLines.reduce((sum, l) => sum + (Number(l.debit) || 0), 0);
-    const totalCredit = normalizedLines.reduce((sum, l) => sum + (Number(l.credit) || 0), 0);
-    if (totalDebit <= 0 || totalCredit <= 0 || Math.abs(totalDebit - totalCredit) > 0.01) return false;
-    const newEntry: ManualJournalEntry = {
-      ...entry,
+    if (normalizedLines.length === 0) return null;
+    const hasInvalidCode = normalizedLines.some(
+      (line) => !line.accountCode || !validAccountCodes.has(line.accountCode),
+    );
+    if (hasInvalidCode) return null;
+    const totalDebit = normalizedLines.reduce((sum, l) => sum + l.debit, 0);
+    const totalCredit = normalizedLines.reduce((sum, l) => sum + l.credit, 0);
+    if (totalDebit <= 0 || totalCredit <= 0 || Math.abs(totalDebit - totalCredit) > 0.01) return null;
+    return {
+      date: entry.date,
+      description: String(entry.description || '').trim(),
       lines: normalizedLines,
+    };
+  };
+
+  const addManualJournalEntry = async (entry: Omit<ManualJournalEntry, 'id'>): Promise<boolean> => {
+    if (!(currentUser?.role === 'محاسب' || currentUser?.role === 'مالك')) return false;
+    const entryYear = new Date(entry.date).getFullYear().toString();
+    if (closedFiscalYears.includes(entryYear)) return false;
+    const monthKey = getMonthKey(`${entry.date}T12:00:00.000Z`);
+    if (isMonthClosed(monthKey)) return false;
+    const normalized = normalizeManualJournalPayload(entry);
+    if (!normalized) return false;
+    const newEntry: ManualJournalEntry = {
+      ...normalized,
       id: `JRN-${Math.random().toString(36).substr(2, 6).toUpperCase()}`,
     };
     if (isServerDataMode()) {
@@ -6469,24 +6520,39 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return true;
   };
 
+  const updateManualJournalEntry = async (
+    id: string,
+    entry: Omit<ManualJournalEntry, 'id'>,
+  ): Promise<boolean> => {
+    if (!(currentUser?.role === 'محاسب' || currentUser?.role === 'مالك')) return false;
+    if (getManualJournalModifyBlockReason(id, entry.date)) return false;
+    const normalized = normalizeManualJournalPayload(entry);
+    if (!normalized) return false;
+    const updatedEntry: ManualJournalEntry = { id, ...normalized };
+    if (isServerDataMode()) {
+      try {
+        const saved = await updateManualJournalApi(id, normalized);
+        setManualJournalEntries((prev) => prev.map((e) => (e.id === id ? saved : e)));
+      } catch {
+        return false;
+      }
+    } else {
+      setManualJournalEntries((prev) => prev.map((e) => (e.id === id ? updatedEntry : e)));
+    }
+    addAuditEvent({
+      action: 'تعديل قيد يومية يدوي',
+      entityType: 'system',
+      entityId: id,
+      details: normalized.description,
+    });
+    return true;
+  };
+
   const removeManualJournalEntry = async (id: string): Promise<boolean> => {
     if (!(currentUser?.role === 'محاسب' || currentUser?.role === 'مالك')) return false;
     const entry = manualJournalEntries.find((e) => e.id === id);
     if (!entry) return false;
-    const entryYear = new Date(entry.date).getFullYear().toString();
-    if (closedFiscalYears.includes(entryYear)) return false;
-    const monthKey = getMonthKey(`${entry.date}T12:00:00.000Z`);
-    if (isMonthClosed(monthKey)) return false;
-    const refInvoice = invoices.some((inv) =>
-      (inv.collections || []).some((c) => c.journalEntryId === id)
-    );
-    const refCustody = custodyFunds.some(
-      (f) =>
-        f.journalEntryPaymentId === id ||
-        f.journalEntrySettlementId === id ||
-        f.journalEntryId === id
-    );
-    if (refInvoice || refCustody) return false;
+    if (getManualJournalModifyBlockReason(id)) return false;
 
     if (isServerDataMode()) {
       try {
@@ -10154,7 +10220,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       getRepSnapshots, monthlyTargets, updateMonthlyTarget, getPerformanceAlerts, getSlaHeatmap,
       closedMonths, closeMonth, reopenMonth, isMonthClosed,
       chartOfAccounts, addChartAccount, removeChartAccount,
-      manualJournalEntries, addManualJournalEntry, removeManualJournalEntry,
+      manualJournalEntries, addManualJournalEntry, updateManualJournalEntry, removeManualJournalEntry, getManualJournalModifyBlockReason,
       journalCodingRules, setJournalCodingRules, addJournalCodingRule, removeJournalCodingRule,
       expenseCodingRules, setExpenseCodingRules,
       customerCodePrefix, setCustomerCodePrefix,
