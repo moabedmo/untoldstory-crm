@@ -1,3 +1,4 @@
+import { coerceAccountingWorkspaceArray } from '@/lib/accounting/accountingWorkspacePersistence';
 import { getSupabase } from '@/lib/supabase/client';
 import { getSupabaseActor } from '@/lib/supabase/getActor';
 
@@ -77,11 +78,29 @@ function normalizeOtherBookingsPatch(val: unknown): unknown[] | null {
   return out;
 }
 
+function normalizeAccountingPatchValue(key: string, val: unknown): unknown {
+  if (key === 'chartOfAccounts' || key === 'journalCodebook') {
+    return coerceAccountingWorkspaceArray(val);
+  }
+  return val;
+}
+
+function sanitizeAccountingDoc(doc: Record<string, unknown>): Record<string, unknown> {
+  const out = { ...doc };
+  if (Object.prototype.hasOwnProperty.call(out, 'chartOfAccounts')) {
+    out.chartOfAccounts = coerceAccountingWorkspaceArray(out.chartOfAccounts);
+  }
+  if (Object.prototype.hasOwnProperty.call(out, 'journalCodebook')) {
+    out.journalCodebook = coerceAccountingWorkspaceArray(out.journalCodebook);
+  }
+  return out;
+}
+
 function deepMergeDoc(base: Record<string, unknown>, patch: Record<string, unknown>): Record<string, unknown> {
   const out = { ...(base && typeof base === 'object' ? base : {}) };
   for (const [k, v] of Object.entries(patch || {})) {
     if (v === undefined) continue;
-    out[k] = v;
+    out[k] = normalizeAccountingPatchValue(k, v);
   }
   return out;
 }
@@ -91,7 +110,9 @@ export async function fetchWorkspaceStateSb(): Promise<Record<string, unknown>> 
   const { data, error } = await sb.from('workspace_state').select('doc_json').eq('id', SINGLE_ID).maybeSingle();
   if (error) throw new Error(error.message);
   const doc = (data as { doc_json?: unknown } | null)?.doc_json;
-  return doc && typeof doc === 'object' ? (doc as Record<string, unknown>) : {};
+  return doc && typeof doc === 'object'
+    ? sanitizeAccountingDoc(doc as Record<string, unknown>)
+    : {};
 }
 
 export async function patchWorkspaceStateSb(patch: Record<string, unknown>): Promise<Record<string, unknown>> {
@@ -124,7 +145,9 @@ export async function patchWorkspaceStateSb(patch: Record<string, unknown>): Pro
 
   let cur =
     row && typeof (row as { doc_json?: unknown }).doc_json === 'object'
-      ? ({ ...((row as { doc_json: Record<string, unknown> }).doc_json || {}) } as Record<string, unknown>)
+      ? sanitizeAccountingDoc(
+          { ...((row as { doc_json: Record<string, unknown> }).doc_json || {}) } as Record<string, unknown>,
+        )
       : {};
 
   let patchForMerge = { ...patch };
@@ -187,5 +210,7 @@ export async function patchWorkspaceStateSb(patch: Record<string, unknown>): Pro
     .single();
   if (upErr) throw new Error(upErr.message);
   const doc = (updated as { doc_json?: unknown })?.doc_json;
-  return doc && typeof doc === 'object' ? (doc as Record<string, unknown>) : {};
+  return doc && typeof doc === 'object'
+    ? sanitizeAccountingDoc(doc as Record<string, unknown>)
+    : {};
 }

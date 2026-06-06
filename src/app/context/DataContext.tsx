@@ -76,6 +76,15 @@ import { notifyClientChannel } from '@/lib/clientChannelNotify';
 import { fetchLeadsSb } from '@/lib/supabase/directApiSb';
 import { toast } from 'sonner';
 import { syncWorkspacePatch, type WorkspaceStatePatch } from './workspaceSync';
+import {
+  accountingSaveErrorHint,
+  coerceAccountingWorkspaceArray,
+  mergeChartOfAccountsLists,
+  mergeJournalCodingRulesLists,
+  readCachedChartOfAccounts,
+  readCachedJournalCodebook,
+  writeAccountingCache,
+} from '@/lib/accounting/accountingWorkspacePersistence';
 import { normalizeLeadPhone, leadPhoneDigitsKey, isValidLeadPhone } from '@/lib/leadPhone';
 
 /** حذف قيد يومية أثناء التراجع — لا يرمي للأعلى */
@@ -416,15 +425,10 @@ const DEFAULT_EXPENSE_CODING_RULES: ExpenseCodingRule[] = [
 ];
 
 function normalizeJournalCodingRulesFromArray(raw: unknown): JournalCodingRule[] {
-  if (raw == null) return [];
-  const arr = Array.isArray(raw)
-    ? raw
-    : typeof raw === 'object'
-      ? Object.values(raw as Record<string, unknown>)
-      : [];
+  const arr = coerceAccountingWorkspaceArray(raw);
   return arr
-    .filter((x) => x && typeof x === 'object')
-    .map((x: Record<string, unknown>) => ({
+    .filter((x): x is Record<string, unknown> => !!x && typeof x === 'object')
+    .map((x) => ({
       id: String(x.id ?? `jr-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`),
       title: String(x.title ?? '').trim(),
       accountCode: String(x.accountCode ?? '').trim(),
@@ -1468,12 +1472,7 @@ const CUSTODY_ASSET_ACCOUNT_CODE = '1150';
 const VALID_COA_TYPES = new Set<ChartOfAccount['type']>(['asset', 'liability', 'equity', 'revenue', 'expense']);
 
 function normalizeChartOfAccounts(raw: unknown): ChartOfAccount[] {
-  if (raw == null) return [];
-  const arr = Array.isArray(raw)
-    ? raw
-    : typeof raw === 'object'
-      ? Object.values(raw as Record<string, unknown>)
-      : [];
+  const arr = coerceAccountingWorkspaceArray(raw);
   const out: ChartOfAccount[] = [];
   const seen = new Set<string>();
   for (const item of arr) {
@@ -2276,9 +2275,15 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [monthlyTargets, setMonthlyTargets] = useState<MonthlyTarget[]>(DEFAULT_TARGETS);
   const [auditEvents, setAuditEvents] = useState<AuditEvent[]>([]);
   const [closedMonths, setClosedMonths] = useState<string[]>([]);
-  const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccount[]>(DEFAULT_CHART_OF_ACCOUNTS);
+  const [chartOfAccounts, setChartOfAccounts] = useState<ChartOfAccount[]>(() => {
+    const cached = readCachedChartOfAccounts();
+    if (cached.length > 0) return ensureCustodyAccountInChart(cached);
+    return DEFAULT_CHART_OF_ACCOUNTS;
+  });
   const [manualJournalEntries, setManualJournalEntries] = useState<ManualJournalEntry[]>([]);
-  const [journalCodingRules, setJournalCodingRulesState] = useState<JournalCodingRule[]>([]);
+  const [journalCodingRules, setJournalCodingRulesState] = useState<JournalCodingRule[]>(() =>
+    readCachedJournalCodebook(),
+  );
   const customerCodePrefixRef = useRef('CUS');
   const [customerCodePrefix, setCustomerCodePrefixState] = useState('CUS');
   const [expenseCodingRules, setExpenseCodingRulesState] = useState<ExpenseCodingRule[]>(() =>
@@ -3422,8 +3427,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (Object.keys(ws).length > 0) {
           if (ws.chartOfAccounts !== undefined) {
             const fromServer = normalizeChartOfAccounts(ws.chartOfAccounts);
+            const cached = readCachedChartOfAccounts();
             setChartOfAccounts((prev) => {
-              const base = fromServer.length > 0 ? fromServer : prev.length > 0 ? prev : DEFAULT_CHART_OF_ACCOUNTS;
+              const merged = mergeChartOfAccountsLists(fromServer, prev, cached);
+              const base = merged.length > 0 ? merged : DEFAULT_CHART_OF_ACCOUNTS;
               return ensureCustodyAccountInChart(base);
             });
           }
@@ -3496,7 +3503,9 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             setIntegrations(normalized);
           }
           if (ws.journalCodebook !== undefined) {
-            setJournalCodingRulesState(normalizeJournalCodingRulesFromArray(ws.journalCodebook));
+            const fromServer = normalizeJournalCodingRulesFromArray(ws.journalCodebook);
+            const cached = readCachedJournalCodebook();
+            setJournalCodingRulesState((prev) => mergeJournalCodingRulesLists(fromServer, prev, cached));
           }
           if (ws.expenseCodebook !== undefined) {
             setExpenseCodingRulesState(mergeExpenseCodingRulesFromArray(ws.expenseCodebook));
@@ -3541,6 +3550,25 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         }
         const att = Array.isArray(attendanceRec) ? attendanceRec : [];
         if (att.length > 0) setAttendanceRecords(att);
+        if (
+          (currentUser?.role === 'مالك' || currentUser?.role === 'محاسب') &&
+          Object.keys(ws).length > 0
+        ) {
+          const wsChart =
+            ws.chartOfAccounts !== undefined ? normalizeChartOfAccounts(ws.chartOfAccounts) : [];
+          const wsJournal =
+            ws.journalCodebook !== undefined
+              ? normalizeJournalCodingRulesFromArray(ws.journalCodebook)
+              : [];
+          const mergedChart = mergeChartOfAccountsLists(wsChart, readCachedChartOfAccounts());
+          const mergedJournal = mergeJournalCodingRulesLists(wsJournal, readCachedJournalCodebook());
+          const patch: Record<string, unknown> = {};
+          if (mergedChart.length > wsChart.length) patch.chartOfAccounts = mergedChart;
+          if (mergedJournal.length > wsJournal.length) patch.journalCodebook = mergedJournal;
+          if (Object.keys(patch).length > 0) {
+            void patchWorkspaceStateApi(patch).catch(() => {});
+          }
+        }
         return true;
       } catch {
         return false;
@@ -3613,6 +3641,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       workspaceApplyEpochRef.current += 1;
     };
   }, [currentUser?.id, currentUser?.authSource]);
+
+  useEffect(() => {
+    writeAccountingCache(chartOfAccounts, journalCodingRules);
+  }, [chartOfAccounts, journalCodingRules]);
 
   /** إن تعثّرت المزامنة الأولى أو رجعت حجوزات=[] بالغلط، جرّب جلب الحجوزات بعد لحظة دون لهث الـWorkspace كله */
   useEffect(() => {
@@ -4135,13 +4167,22 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const normalized = normalizeJournalCodingRulesFromArray(next);
     if (isServerDataMode()) {
       try {
-        await patchWorkspaceStateApi({ journalCodebook: normalized });
-      } catch {
-        toast.error('تعذر حفظ أكواد اليومية — تحقق من الصلاحيات أو الاتصال');
+        const saved = await patchWorkspaceStateApi({ journalCodebook: normalized });
+        const fromServer = normalizeJournalCodingRulesFromArray(saved.journalCodebook);
+        const merged = mergeJournalCodingRulesLists(fromServer, normalized);
+        setJournalCodingRulesState(merged);
+        writeAccountingCache(chartOfAccounts, merged);
+        if (fromServer.length < normalized.length) {
+          void patchWorkspaceStateApi({ journalCodebook: merged }).catch(() => {});
+        }
+        return true;
+      } catch (err) {
+        toast.error(accountingSaveErrorHint(err instanceof Error ? err.message : 'تعذر حفظ أكواد اليومية'));
         return false;
       }
     }
     setJournalCodingRulesState(normalized);
+    writeAccountingCache(chartOfAccounts, normalized);
     return true;
   };
 
@@ -6326,21 +6367,28 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const code = String(account.code || '').trim();
     const name = String(account.name || '').trim();
     if (!code || !name) return false;
-    let nextAccounts: ChartOfAccount[] | null = null;
-    setChartOfAccounts((prev) => {
-      if (prev.some((a) => a.code === code)) return prev;
-      nextAccounts = [...prev, { ...account, code, name, isSystem: false as const }];
-      return nextAccounts;
-    });
-    if (!nextAccounts) return false;
+    if (chartOfAccounts.some((a) => a.code === code)) return false;
+    const snapshot = chartOfAccounts;
+    const nextAccounts = [...snapshot, { ...account, code, name, isSystem: false as const }];
+    setChartOfAccounts(nextAccounts);
     if (isServerDataMode()) {
       try {
-        await patchWorkspaceStateApi({ chartOfAccounts: nextAccounts });
-      } catch {
-        setChartOfAccounts((prev) => prev.filter((a) => a.code !== code));
-        toast.error('تعذر حفظ الحساب في دليل الحسابات — تحقق من الصلاحيات أو الاتصال');
+        const saved = await patchWorkspaceStateApi({ chartOfAccounts: nextAccounts });
+        const fromServer = normalizeChartOfAccounts(saved.chartOfAccounts);
+        const merged = mergeChartOfAccountsLists(fromServer, nextAccounts);
+        const finalAccounts = ensureCustodyAccountInChart(merged.length > 0 ? merged : nextAccounts);
+        setChartOfAccounts(finalAccounts);
+        writeAccountingCache(finalAccounts, journalCodingRules);
+        if (fromServer.length < nextAccounts.length) {
+          void patchWorkspaceStateApi({ chartOfAccounts: finalAccounts }).catch(() => {});
+        }
+      } catch (err) {
+        setChartOfAccounts(snapshot);
+        toast.error(accountingSaveErrorHint(err instanceof Error ? err.message : 'تعذر حفظ الحساب'));
         return false;
       }
+    } else {
+      writeAccountingCache(nextAccounts, journalCodingRules);
     }
     addAuditEvent({
       action: 'إضافة حساب بدليل الحسابات',
@@ -6360,14 +6408,18 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const next = snapshot.filter((a) => a.code !== code);
     if (isServerDataMode()) {
       try {
-        await patchWorkspaceStateApi({ chartOfAccounts: next });
-        setChartOfAccounts(next);
-      } catch {
-        toast.error('تعذر حذف الحساب — تحقق من الصلاحيات أو الاتصال');
+        const saved = await patchWorkspaceStateApi({ chartOfAccounts: next });
+        const fromServer = normalizeChartOfAccounts(saved.chartOfAccounts);
+        const finalAccounts = fromServer.length > 0 ? fromServer : next;
+        setChartOfAccounts(finalAccounts);
+        writeAccountingCache(finalAccounts, journalCodingRules);
+      } catch (err) {
+        toast.error(accountingSaveErrorHint(err instanceof Error ? err.message : 'تعذر حذف الحساب'));
         return false;
       }
     } else {
       setChartOfAccounts(next);
+      writeAccountingCache(next, journalCodingRules);
     }
     addAuditEvent({
       action: 'حذف حساب من دليل الحسابات',

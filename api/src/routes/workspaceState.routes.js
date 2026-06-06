@@ -2,6 +2,25 @@ import { Router } from 'express';
 import { prisma } from '../prisma.js';
 import { requireAuth } from '../middleware/requireAuth.js';
 
+function coerceAccountingArray(val) {
+  if (val == null) return [];
+  if (Array.isArray(val)) return val;
+  if (typeof val === 'object') return Object.values(val);
+  return [];
+}
+
+function sanitizeAccountingDoc(doc) {
+  if (!doc || typeof doc !== 'object') return {};
+  const out = { ...doc };
+  if (Object.prototype.hasOwnProperty.call(out, 'chartOfAccounts')) {
+    out.chartOfAccounts = coerceAccountingArray(out.chartOfAccounts);
+  }
+  if (Object.prototype.hasOwnProperty.call(out, 'journalCodebook')) {
+    out.journalCodebook = coerceAccountingArray(out.journalCodebook);
+  }
+  return out;
+}
+
 const router = Router();
 const SINGLE_ID = 'default';
 
@@ -111,7 +130,11 @@ function deepMergeDoc(base, patch) {
   const out = { ...(base && typeof base === 'object' ? base : {}) };
   for (const [k, v] of Object.entries(patch || {})) {
     if (v === undefined) continue;
-    out[k] = v;
+    if (k === 'chartOfAccounts' || k === 'journalCodebook') {
+      out[k] = coerceAccountingArray(v);
+    } else {
+      out[k] = v;
+    }
   }
   return out;
 }
@@ -119,7 +142,7 @@ function deepMergeDoc(base, patch) {
 router.get('/', requireAuth(), async (_req, res) => {
   try {
     const row = await ensureRow();
-    const doc = row.docJson && typeof row.docJson === 'object' ? row.docJson : {};
+    const doc = sanitizeAccountingDoc(row.docJson && typeof row.docJson === 'object' ? row.docJson : {});
     return res.json({ workspace: doc });
   } catch (e) {
     console.error(e);
@@ -134,7 +157,7 @@ router.patch('/', requireAuth(), async (req, res) => {
     const keys = Object.keys(patch).filter((k) => patch[k] !== undefined);
     if (keys.length === 0) {
       const row = await ensureRow();
-      const doc = row.docJson && typeof row.docJson === 'object' ? row.docJson : {};
+      const doc = sanitizeAccountingDoc(row.docJson && typeof row.docJson === 'object' ? row.docJson : {});
       return res.json({ workspace: doc });
     }
     for (const k of keys) {
@@ -152,7 +175,7 @@ router.patch('/', requireAuth(), async (req, res) => {
       }
     }
     const row = await ensureRow();
-    const cur = row.docJson && typeof row.docJson === 'object' ? row.docJson : {};
+    const cur = sanitizeAccountingDoc(row.docJson && typeof row.docJson === 'object' ? row.docJson : {});
     let patchForMerge = { ...patch };
     if (Object.prototype.hasOwnProperty.call(patch, 'otherBookings')) {
       const norm = normalizeOtherBookingsPatch(patch.otherBookings);
@@ -220,7 +243,7 @@ router.patch('/', requireAuth(), async (req, res) => {
       where: { id: SINGLE_ID },
       data: { docJson: next },
     });
-    const doc = updated.docJson && typeof updated.docJson === 'object' ? updated.docJson : {};
+    const doc = sanitizeAccountingDoc(updated.docJson && typeof updated.docJson === 'object' ? updated.docJson : {});
     return res.json({ workspace: doc });
   } catch (e) {
     console.error(e);
