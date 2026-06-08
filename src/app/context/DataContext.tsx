@@ -79,6 +79,13 @@ import { getMonthKey } from './dateMonthKey';
 import { notifyNewInboundLeads, resetInboundLeadToastState } from '@/lib/inboundLeadToasts';
 import { notifyClientChannel } from '@/lib/clientChannelNotify';
 import { fetchLeadsSb } from '@/lib/supabase/directApiSb';
+import {
+  mergeLeadsFromServer,
+  removeLeadFromList,
+  upsertLeadInList,
+} from '@/lib/leads/mergeLeadsFromServer';
+import { upsertById, removeById, prependUniqueAudit } from '@/lib/sync/entityListMerge';
+import { subscribeWorkspaceRealtime } from '@/lib/supabase/subscribeWorkspaceRealtime';
 import { toast } from 'sonner';
 import { syncWorkspacePatch, type WorkspaceStatePatch } from './workspaceSync';
 import {
@@ -3261,7 +3268,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           attendanceRec = tuple[17];
         }
         if (epoch !== workspaceApplyEpochRef.current) return false;
-        setLeads(leadsList);
+        setLeads((prev) => mergeLeadsFromServer(prev, leadsList));
         setUsers(rawUsers.map((u) => normalizeUser({ ...u, authSource: 'database' })));
         setManualCustomers(customers);
         setInvoices(invs.map(normalizeInvoice));
@@ -3726,58 +3733,112 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     notifyNewInboundLeads(leads, currentUser.role);
   }, [leads, currentUser?.id, currentUser?.role]);
 
-  /** استطلاع ليدز كل ~90 ثانية (التبويب ظاهر) لاكتشاف إدراج n8n */
+  /** مزامنة دورية — fallback لو Realtime غير مفعّل (كل 90 ثانية لتقليل الحمل مع آلاف الليدز) */
   useEffect(() => {
     if (!isServerDataMode()) return;
     if (!hasServerAuthToken()) return;
     if (!currentUser?.id) return;
-    if (currentUser.role !== 'مالك' && currentUser.role !== 'مدير مبيعات') return;
 
     let cancelled = false;
-    const poll = async () => {
+    const pollWorkspace = () => {
       if (cancelled || typeof document === 'undefined') return;
       if (document.visibilityState === 'hidden') return;
-      try {
-        const fresh = isSupabaseDirectMode() ? await fetchLeadsSb() : await fetchLeadsApi();
-        if (!cancelled) setLeads(fresh);
-      } catch {
-        /* ignore */
-      }
+      void refreshServerWorkspace();
     };
 
-    const id = window.setInterval(poll, 90_000);
+    void pollWorkspace();
+    const id = window.setInterval(pollWorkspace, 90_000);
     return () => {
       cancelled = true;
       window.clearInterval(id);
     };
-  }, [currentUser?.id, currentUser?.role]);
+  }, [currentUser?.id, refreshServerWorkspace]);
 
-  /** استطلاع عهد الإنتاج — المالك/المحاسب/مدير الإنتاج (تنبيهات + اعتمادات بدون إعادة تحميل الصفحة) */
+  /** تحديث فوري لكل جداول النظام عبر Supabase Realtime */
   useEffect(() => {
-    if (!isServerDataMode()) return;
-    if (!hasServerAuthToken()) return;
+    if (!isSupabaseDirectMode()) return;
     if (!currentUser?.id) return;
-    if (!['مالك', 'محاسب', 'مدير إنتاج'].includes(currentUser.role)) return;
 
-    let cancelled = false;
-    const pollCustody = async () => {
-      if (cancelled || typeof document === 'undefined') return;
-      if (document.visibilityState === 'hidden') return;
-      try {
-        const fresh = await fetchCustodyFundsApi();
-        if (!cancelled) setCustodyFunds(fresh.map(migrateCustodyFund));
-      } catch {
-        /* ignore */
-      }
+    let configRefreshTimer: ReturnType<typeof setTimeout> | null = null;
+    const scheduleConfigRefresh = () => {
+      if (configRefreshTimer) window.clearTimeout(configRefreshTimer);
+      configRefreshTimer = window.setTimeout(() => {
+        void refreshServerWorkspace();
+      }, 2500);
     };
 
-    void pollCustody();
-    const id = window.setInterval(pollCustody, 45_000);
+    let channel: ReturnType<typeof subscribeWorkspaceRealtime> | null = null;
+    try {
+      channel = subscribeWorkspaceRealtime({
+        onLeadUpsert: (lead) => setLeads((prev) => upsertLeadInList(prev, lead)),
+        onLeadDelete: (id) => setLeads((prev) => removeLeadFromList(prev, id)),
+        onUserUpsert: (user) =>
+          setUsers((prev) => upsertById(prev, normalizeUser({ ...user, authSource: 'database' }))),
+        onUserDelete: (id) => setUsers((prev) => removeById(prev, id)),
+        onManualCustomerUpsert: (customer) =>
+          setManualCustomers((prev) => upsertById(prev, customer)),
+        onManualCustomerDelete: (id) => setManualCustomers((prev) => removeById(prev, id)),
+        onInvoiceRowUpsert: (raw) =>
+          setInvoices((prev) => upsertById(prev, normalizeInvoice(raw))),
+        onInvoiceDelete: (id) => setInvoices((prev) => removeById(prev, id)),
+        onExpenseUpsert: (expense) => setExpenses((prev) => upsertById(prev, expense)),
+        onExpenseDelete: (id) => setExpenses((prev) => removeById(prev, id)),
+        onPriceQuoteUpsert: (quote) => setPriceQuotes((prev) => upsertById(prev, quote)),
+        onPriceQuoteDelete: (id) => setPriceQuotes((prev) => removeById(prev, id)),
+        onManualJournalUpsert: (entry) =>
+          setManualJournalEntries((prev) => upsertById(prev, entry)),
+        onManualJournalDelete: (id) => setManualJournalEntries((prev) => removeById(prev, id)),
+        onAuditUpsert: (event) => setAuditEvents((prev) => prependUniqueAudit(prev, event)),
+        onAttendanceUpsert: (record) => setAttendanceRecords((prev) => upsertById(prev, record)),
+        onAttendanceDelete: (id) => setAttendanceRecords((prev) => removeById(prev, id)),
+        onDocJsonUpsert: (table, id, doc) => {
+          const withId = { ...doc, id };
+          if (table === 'custody_funds') {
+            setCustodyFunds((prev) => upsertById(prev, migrateCustodyFund(withId)));
+            return;
+          }
+          if (table === 'shoot_bookings') {
+            setShootBookings((prev) => upsertById(prev, withId as ShootBooking));
+            return;
+          }
+          if (table === 'equipment_bookings') {
+            setEquipmentBookings((prev) => upsertById(prev, withId as EquipmentBooking));
+            return;
+          }
+          if (table === 'meeting_bookings') {
+            setMeetingBookings((prev) =>
+              upsertById(prev, normalizeMeetingBooking(withId)),
+            );
+          }
+        },
+        onDocJsonDelete: (table, id) => {
+          if (table === 'custody_funds') setCustodyFunds((prev) => removeById(prev, id));
+          else if (table === 'shoot_bookings') setShootBookings((prev) => removeById(prev, id));
+          else if (table === 'equipment_bookings') setEquipmentBookings((prev) => removeById(prev, id));
+          else if (table === 'meeting_bookings') setMeetingBookings((prev) => removeById(prev, id));
+        },
+        onWorkspaceDocReplace: () => scheduleConfigRefresh(),
+        onAccountingPolicyReplace: (pol) => {
+          if (!pol) return;
+          setAccountingPolicy({
+            ...DEFAULT_ACCOUNTING_POLICY,
+            ...pol,
+            allowedCostCentersForQuotes:
+              Array.isArray(pol.allowedCostCentersForQuotes) && pol.allowedCostCentersForQuotes.length > 0
+                ? pol.allowedCostCentersForQuotes
+                : DEFAULT_ACCOUNTING_POLICY.allowedCostCentersForQuotes,
+          });
+        },
+        onConfigTablesChanged: scheduleConfigRefresh,
+      });
+    } catch {
+      /* Supabase غير مهيأ */
+    }
     return () => {
-      cancelled = true;
-      window.clearInterval(id);
+      if (configRefreshTimer) window.clearTimeout(configRefreshTimer);
+      if (channel) void getSupabase().removeChannel(channel);
     };
-  }, [currentUser?.id, currentUser?.role]);
+  }, [currentUser?.id, refreshServerWorkspace]);
 
   // Save to localStorage
   useEffect(() => {
@@ -5096,10 +5157,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             details: `Lead: ${created.name} - ${created.company}`,
           });
         } catch (e: unknown) {
-          // keep the optimistic lead visible — it will be re-evaluated on next workspace
-          // refresh (page reload). This prevents confusing "disappeared" leads for the user.
           const msg = e instanceof Error ? e.message : 'تعذر حفظ الليد على السيرفر';
-          toast.error(`⚠️ ${msg}`);
+          toast.error(`⚠️ لم يُحفظ على السيرفر — ${msg}`);
         }
       })();
       return true;

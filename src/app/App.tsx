@@ -13205,7 +13205,22 @@ const Root = () => {
 
   return (
     <div className={`system-theme ${uiVisualMode === 'premium' ? 'premium-shell cinematic-production' : 'ui-classic'} ${isNotificationsOpen ? 'notifications-open' : ''} ${roleClass} tab-${activeTab} flex h-screen max-h-screen bg-[#080B13] text-slate-100 font-['Cairo'] overflow-hidden`} dir={dir}>
-      <BulkLeadsUploadModal isOpen={isBulkModalOpen} onClose={() => setIsBulkModalOpen(false)} />
+      <BulkLeadsUploadModal
+        isOpen={isBulkModalOpen}
+        onClose={() => setIsBulkModalOpen(false)}
+        onImported={() => {
+          try {
+            localStorage.setItem(
+              NAV_INTENT_KEY,
+              JSON.stringify({ tab: 'leads', leadsAssignedFilter: 'all', leadsStatusFilter: 'الكل' }),
+            );
+            window.dispatchEvent(new Event('prod-system-nav-intent'));
+          } catch {
+            /* ignore */
+          }
+          setActiveTab('leads');
+        }}
+      />
       {personalTodoDueAlarm && personalTodoDueAlarm.length > 0
         ? createPortal(
             <div

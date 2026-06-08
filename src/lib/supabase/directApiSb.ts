@@ -5,6 +5,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import { getSupabaseActor } from '@/lib/supabase/getActor';
 import { normalizeInvoiceFromRow } from '@/lib/supabase/invoiceNormalize';
 import { validateManualJournalLines } from '@/lib/accounting/validateManualJournalLines';
+import { fetchAllLeadsFromSupabase } from '@/lib/supabase/fetchAllLeads';
 import {
   mapLeadFromRow,
   mapUserFromRow,
@@ -47,14 +48,10 @@ function newId(prefix: string): string {
 export async function fetchLeadsSb(): Promise<Lead[]> {
   const actor = await getSupabaseActor();
   const sb = getSupabase();
-  let q = sb.from('leads').select('*').order('updated_at', { ascending: false });
-  if (actor.role === 'مندوب') {
-    q = q.eq('assigned_to_id', actor.id);
-  }
-  const { data, error } = await q;
-  if (error) throw new Error(error.message);
-  if (!Array.isArray(data)) return [];
-  return data.map((r) => mapLeadFromRow(r as Record<string, unknown>));
+  return fetchAllLeadsFromSupabase(
+    sb,
+    actor.role === 'مندوب' ? { assignedToId: actor.id } : undefined,
+  );
 }
 
 /* ---------- users ---------- */

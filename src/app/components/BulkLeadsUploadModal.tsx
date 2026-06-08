@@ -270,7 +270,14 @@ export function BulkLeadsUploadModal({ isOpen, onClose, onImported }: Props) {
           });
         }
         result = { created: totalCreated, skippedDuplicates: 0, failed: totalFailed };
-        if (totalCreated > 0) onImported?.();
+        if (totalCreated > 0) {
+          try {
+            await refreshServerWorkspace();
+          } catch {
+            /* ignore */
+          }
+          onImported?.();
+        }
       }
 
       setLastResult(result);

@@ -13,6 +13,7 @@ import type {
   MeetingBooking,
   AttendanceRecord,
 } from '@/app/context/DataContext';
+import { fetchAllLeadsFromSupabase } from '@/lib/supabase/fetchAllLeads';
 import {
   mapLeadFromRow,
   mapUserFromRow,
@@ -116,7 +117,14 @@ export async function fetchSupabaseWorkspaceSnapshot(): Promise<SupabaseWorkspac
     wsRow,
     attendanceRec,
   ] = await Promise.all([
-    rows(sb.from('leads').select('*').order('updated_at', { ascending: false }), mapLeadFromRow),
+    (async () => {
+      try {
+        return await fetchAllLeadsFromSupabase(sb);
+      } catch (e) {
+        console.warn('[supabase workspace] leads fetch failed', e);
+        return [];
+      }
+    })(),
     rows(
       sb
         .from('users')
