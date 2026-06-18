@@ -240,6 +240,12 @@ export interface Invoice {
 }
 
 /** طلب عرض سعر مالي من المبيعات — لا يُسجَّل عند المحاسب إلا بعد اعتماد المالك */
+export interface PriceQuoteLineItem {
+  id: string;
+  description: string;
+  amount: number;
+}
+
 export interface PriceQuote {
   id: string;
   leadId: string;
@@ -276,6 +282,8 @@ export interface PriceQuote {
   companyMarginPercent?: number;
   /** مجموع بنود التكلفة قبل تطبيق نسبة الشركة */
   productionCostAmount?: number;
+  /** بنود التفصيل للطباعة */
+  lineItems?: PriceQuoteLineItem[];
 }
 
 export interface ClientPayment {
@@ -1117,6 +1125,9 @@ export interface EquipmentItem {
 
 export interface PrintBrandingSettings {
   companyName: string;
+  /** رابط عام من Supabase Storage — يُفضَّل في وضع السيرفر */
+  logoUrl?: string;
+  /** base64 محلي — وضع تجريبي أو معاينة فورية */
   logoDataUrl?: string;
   reportHeader: string;
   reportFooter: string;
@@ -1267,6 +1278,17 @@ interface DataContextType {
   updateInvoiceStatus: (invoiceId: string, status: Invoice['status']) => Promise<boolean>;
   recordInvoiceCollection: (invoiceId: string, payload: { amount: number; method: 'كاش' | 'تحويل'; nextDueDate?: string; note?: string }) => Promise<boolean>;
   addPriceQuote: (data: Omit<PriceQuote, 'id' | 'createdAt' | 'status' | 'createdById' | 'createdByName' | 'approvedBy' | 'approvedAt' | 'invoiceId' | 'pricedById' | 'pricedByName' | 'pricedAt'>) => Promise<boolean>;
+  addProductionPriceQuote: (data: {
+    customerName: string;
+    title: string;
+    leadId?: string;
+    costCenter?: string;
+    note?: string;
+    lineItems: PriceQuoteLineItem[];
+    companyMarginPercent: number;
+    vatRate: number;
+    pricingNote?: string;
+  }) => Promise<boolean>;
   productionPriceQuote: (
     quoteId: string,
     amount: number,
@@ -1274,6 +1296,7 @@ interface DataContextType {
     pricingNote?: string,
     companyMarginPercent?: number,
     productionCostAmount?: number,
+    lineItems?: PriceQuoteLineItem[],
   ) => Promise<boolean>;
   reassignPricingRequest: (quoteId: string, toUserId: string, toUserName: string) => Promise<boolean>;
   approvePriceQuote: (quoteId: string, paymentSchedule?: PaymentInstallment[], initialPayment?: number) => Promise<boolean>;
@@ -2759,6 +2782,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           const parsedBranding = parseSafe<any>(savedPrintBranding);
           setPrintBrandingSettings({
             companyName: parsedBranding?.companyName || DEFAULT_PRINT_BRANDING.companyName,
+            logoUrl: parsedBranding?.logoUrl || '',
             logoDataUrl: parsedBranding?.logoDataUrl || '',
             reportHeader: parsedBranding?.reportHeader || DEFAULT_PRINT_BRANDING.reportHeader,
             reportFooter: parsedBranding?.reportFooter || DEFAULT_PRINT_BRANDING.reportFooter,
@@ -2965,7 +2989,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
           if (parsedBranding && typeof parsedBranding === 'object') {
             setPrintBrandingSettings({
               companyName: parsedBranding?.companyName || DEFAULT_PRINT_BRANDING.companyName,
-              logoDataUrl: parsedBranding?.logoDataUrl || '',
+              logoUrl: parsedBranding?.logoUrl || '',
+            logoDataUrl: parsedBranding?.logoDataUrl || '',
               reportHeader: parsedBranding?.reportHeader || DEFAULT_PRINT_BRANDING.reportHeader,
               reportFooter: parsedBranding?.reportFooter || DEFAULT_PRINT_BRANDING.reportFooter,
               primaryColor: parsedBranding?.primaryColor || DEFAULT_PRINT_BRANDING.primaryColor,
@@ -3308,7 +3333,19 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const eq = ws.equipmentItems;
     if (Array.isArray(eq) && eq.length > 0) setEquipmentItems(eq as EquipmentItem[]);
     if (ws.printBranding && typeof ws.printBranding === 'object') {
-      setPrintBrandingSettings({ ...DEFAULT_PRINT_BRANDING, ...(ws.printBranding as object) } as PrintBrandingSettings);
+      setPrintBrandingSettings((prev) => {
+        const fromServer = {
+          ...DEFAULT_PRINT_BRANDING,
+          ...(ws.printBranding as object),
+        } as PrintBrandingSettings;
+        const serverLogoUrl = (fromServer.logoUrl || '').trim();
+        const serverDataUrl = (fromServer.logoDataUrl || '').trim();
+        return {
+          ...fromServer,
+          logoUrl: serverLogoUrl || prev.logoUrl,
+          logoDataUrl: serverLogoUrl ? '' : serverDataUrl || prev.logoDataUrl || '',
+        };
+      });
     }
     if (ws.leadIngestion && typeof ws.leadIngestion === 'object') {
       const rawIngestion = ws.leadIngestion as Partial<LeadIngestionSettings>;
@@ -4631,7 +4668,13 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const updatePrintBrandingSettings = (patch: Partial<PrintBrandingSettings>) => {
     setPrintBrandingSettings((prev) => {
       const next = { ...prev, ...patch };
-      if (isServerDataMode()) void syncWorkspacePatch({ printBranding: next }, () => { setPrintBrandingSettings(prev); });
+      if (isServerDataMode()) {
+        const { logoDataUrl: _omitDataUrl, ...forServer } = next;
+        void syncWorkspacePatch({ printBranding: forServer }, () => {
+          toast.error('فشل حفظ إعدادات الطباعة على السيرفر');
+          setPrintBrandingSettings(prev);
+        });
+      }
       return next;
     });
   };
@@ -7424,6 +7467,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     pricingNote?: string,
     companyMarginPercent?: number,
     productionCostAmount?: number,
+    lineItems?: PriceQuoteLineItem[],
   ): Promise<boolean> => {
     if (!currentUser) return false;
     if (!(currentUser.role === 'مدير إنتاج' || currentUser.role === 'مالك' || currentUser.role === 'مدير مبيعات')) return false;
@@ -7453,6 +7497,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       pricingNote: pricingNote?.trim() || undefined,
       companyMarginPercent: cmp,
       ...(costStored !== undefined ? { productionCostAmount: costStored } : {}),
+      ...(lineItems && lineItems.length > 0 ? { lineItems } : {}),
     };
     if (isServerDataMode()) {
       try {
@@ -7469,6 +7514,107 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       entityType: 'system',
       entityId: quoteId,
       details: `${quote.title} — قبل ضريبة ${amt.toLocaleString()} ج.م${cmp > 0 ? ` — هامش شركة ${cmp}%` : ''}${costStored !== undefined ? ` — تكلفة بنود ${costStored.toLocaleString()} ج.م` : ''} — بانتظار اعتماد المالك`,
+    });
+    return true;
+  };
+
+  const addProductionPriceQuote = async (data: {
+    customerName: string;
+    title: string;
+    leadId?: string;
+    costCenter?: string;
+    note?: string;
+    lineItems: PriceQuoteLineItem[];
+    companyMarginPercent: number;
+    vatRate: number;
+    pricingNote?: string;
+  }): Promise<boolean> => {
+    if (!currentUser) return false;
+    if (currentUser.role !== 'مدير إنتاج') return false;
+    const customerName = String(data.customerName || '').trim();
+    const title = String(data.title || '').trim();
+    if (!customerName || !title) return false;
+    const lineItems = (data.lineItems || [])
+      .map((l) => ({
+        id: l.id || `li-${Math.random().toString(36).slice(2, 8)}`,
+        description: String(l.description || '').trim(),
+        amount: Math.round(Number(l.amount) || 0),
+      }))
+      .filter((l) => l.description && l.amount > 0);
+    if (lineItems.length === 0) return false;
+    const costSubtotal = lineItems.reduce((s, l) => s + l.amount, 0);
+    const cmp = Math.min(100, Math.max(0, Number(data.companyMarginPercent) || 0));
+    const preVat = Math.round(costSubtotal * (1 + cmp / 100));
+    const vr = typeof data.vatRate === 'number' ? data.vatRate : 14;
+    const vatAmount = Math.round(preVat * (vr / 100));
+    const totalAmount = preVat + vatAmount;
+    const nowIso = new Date().toISOString();
+    const cc = (data.costCenter || 'عام').trim() || 'عام';
+    const q: PriceQuote = {
+      id: `PQ-${Math.random().toString(36).substr(2, 5).toUpperCase()}`,
+      leadId: (data.leadId || 'manual').trim() || 'manual',
+      customerName,
+      title,
+      amount: preVat,
+      vatRate: vr,
+      vatAmount,
+      totalAmount,
+      costCenter: cc,
+      note: data.note?.trim() || undefined,
+      createdById: currentUser.id,
+      createdByName: currentUser.name,
+      createdAt: nowIso,
+      status: 'قيد اعتماد المالك',
+      productionAssignedId: currentUser.id,
+      productionAssignedName: currentUser.name,
+      pricedById: currentUser.id,
+      pricedByName: currentUser.name,
+      pricedAt: nowIso,
+      pricingNote: data.pricingNote?.trim() || undefined,
+      companyMarginPercent: cmp,
+      productionCostAmount: costSubtotal,
+      lineItems,
+    };
+    if (isServerDataMode()) {
+      try {
+        const row = await createPriceQuoteApi({
+          id: q.id,
+          leadId: q.leadId,
+          customerName: q.customerName,
+          title: q.title,
+          amount: q.amount,
+          vatRate: q.vatRate,
+          vatAmount: q.vatAmount,
+          totalAmount: q.totalAmount,
+          costCenter: q.costCenter,
+          note: q.note,
+          createdById: q.createdById,
+          createdByName: q.createdByName,
+          productionAssignedId: q.productionAssignedId,
+          productionAssignedName: q.productionAssignedName,
+          pricingNote: q.pricingNote,
+          pricedById: q.pricedById,
+          pricedByName: q.pricedByName,
+          pricedAt: q.pricedAt,
+          status: q.status,
+          companyMarginPercent: q.companyMarginPercent,
+          productionCostAmount: q.productionCostAmount,
+          lineItems: q.lineItems,
+        });
+        setPriceQuotes((prev) => [row, ...prev]);
+      } catch (err) {
+        const msg = err instanceof Error ? err.message : String(err);
+        console.error('[addProductionPriceQuote]', msg);
+        throw new Error(msg);
+      }
+    } else {
+      setPriceQuotes((prev) => [q, ...prev]);
+    }
+    addAuditEvent({
+      action: 'إنشاء عرض سعر من الإنتاج',
+      entityType: 'system',
+      entityId: q.id,
+      details: `${q.title} — ${q.customerName} — ${totalAmount.toLocaleString()} ج.م`,
     });
     return true;
   };
@@ -10466,7 +10612,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     <DataContext.Provider value={{ 
       leads, users, manualCustomers, invoices, priceQuotes, accountingPolicy, expenses, currentUser, setCurrentUser: setCurrentUserPublic, addLead, bulkAddLeads, 
       updateLeadStatus, logLeadInteraction, reviewLeadActivity, setLeadFollowUp, assignLead, assignLeadsBulk, deleteLead, deleteLeadsBulk, updateUserSkills, addEmployee, addManualCustomer, updateEmployeeSalary, updateEmployeeProfile, ownerSetEmployeePassword, removeEmployee, getLeadScore, refreshSLA, logout, addInvoice,
-      updateInvoiceStatus, recordInvoiceCollection, addPriceQuote, productionPriceQuote, reassignPricingRequest, approvePriceQuote, rejectPriceQuote, ownerReturnPriceQuoteToProduction, repRecordClientAcceptance, repRecordClientRejection, updateAccountingPolicy, addExpense, updateExpenseStatus, approveExpense, rejectExpense,
+      updateInvoiceStatus, recordInvoiceCollection, addPriceQuote, addProductionPriceQuote, productionPriceQuote, reassignPricingRequest, approvePriceQuote, rejectPriceQuote, ownerReturnPriceQuoteToProduction, repRecordClientAcceptance, repRecordClientRejection, updateAccountingPolicy, addExpense, updateExpenseStatus, approveExpense, rejectExpense,
       getRepSnapshots, monthlyTargets, updateMonthlyTarget, getPerformanceAlerts, getSlaHeatmap,
       closedMonths, closeMonth, reopenMonth, isMonthClosed,
       chartOfAccounts, addChartAccount, removeChartAccount,

@@ -4,6 +4,7 @@ import type {
   ManualCustomer,
   Expense,
   PriceQuote,
+  PriceQuoteLineItem,
   ManualJournalEntry,
   MonthlyTarget,
   AuditEvent,
@@ -381,6 +382,17 @@ export function mapPriceQuoteFromRow(r: Record<string, unknown>): PriceQuote {
       if (v == null || v === '') return undefined;
       const n = Number(v);
       return Number.isFinite(n) ? Math.round(n) : undefined;
+    })(),
+    lineItems: (() => {
+      const raw = parseJson<PriceQuoteLineItem[]>(r.line_items_json, []);
+      if (!Array.isArray(raw)) return undefined;
+      return raw
+        .map((item, i) => ({
+          id: String((item as PriceQuoteLineItem)?.id || `li-${i}`),
+          description: String((item as PriceQuoteLineItem)?.description || '').trim(),
+          amount: Math.round(Number((item as PriceQuoteLineItem)?.amount) || 0),
+        }))
+        .filter((item) => item.description && item.amount > 0);
     })(),
   };
 }

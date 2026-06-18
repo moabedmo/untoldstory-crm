@@ -10,7 +10,7 @@ function canList(actor) {
 }
 
 function canCreate(actor) {
-  return actor.role === 'مندوب' || actor.role === 'مدير مبيعات';
+  return actor.role === 'مندوب' || actor.role === 'مدير مبيعات' || actor.role === 'مدير إنتاج';
 }
 
 /** من يُسمح له بتعديل صف عرض السعر (الواجهة تفرض القواعد؛ هنا الحد الأدنى للسلامة) */

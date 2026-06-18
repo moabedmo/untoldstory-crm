@@ -861,22 +861,27 @@ export async function createPriceQuoteSb(
     id?: string;
   },
 ): Promise<PriceQuote> {
+  const actor = await getSupabaseActor();
+  if (!(actor.role === 'مندوب' || actor.role === 'مدير مبيعات' || actor.role === 'مدير إنتاج')) {
+    throw new Error('غير مصرح بإنشاء عرض السعر');
+  }
   const leadId = String(payload.leadId || '').trim();
   const customerName = String(payload.customerName || '').trim();
   const title = String(payload.title || '').trim();
   const amount = Math.max(0, Math.round(Number(payload.amount) || 0));
-  if (!leadId || !customerName || !title || !amount) throw new Error('بيانات عرض السعر ناقصة');
-  // resolve actor for created_by fields — fall back to payload if getSupabaseActor fails
+  const status = String(payload.status || '').trim() || 'قيد اعتماد المالك';
+  const isPricingRequest = status === 'بانتظار التسعير';
+  if (!leadId || !customerName || !title) throw new Error('بيانات عرض السعر ناقصة');
+  if (actor.role === 'مدير إنتاج') {
+    if (amount <= 0) throw new Error('يجب إدخال مبلغ عرض السعر');
+  } else if (!isPricingRequest && amount <= 0) {
+    throw new Error('بيانات عرض السعر ناقصة');
+  }
   let actorId = String(payload.createdById || '').trim();
   let actorName = String(payload.createdByName || '').trim();
   if (!actorId || !actorName) {
-    try {
-      const actor = await getSupabaseActor();
-      actorId = actorId || actor.id;
-      actorName = actorName || actor.name;
-    } catch {
-      // session may not be needed if actorId/Name already provided
-    }
+    actorId = actorId || actor.id;
+    actorName = actorName || actor.name;
   }
   const vatRate = typeof payload.vatRate === 'number' ? payload.vatRate : 14;
   const vatAmount =
@@ -899,6 +904,15 @@ export async function createPriceQuoteSb(
     production_assigned_id: payload.productionAssignedId || null,
     production_assigned_name: payload.productionAssignedName || null,
     pricing_note: payload.pricingNote || null,
+    priced_by_id: payload.pricedById || null,
+    priced_by_name: payload.pricedByName || null,
+    priced_at: payload.pricedAt || null,
+    company_margin_percent:
+      payload.companyMarginPercent != null ? Math.min(100, Math.max(0, Number(payload.companyMarginPercent) || 0)) : null,
+    production_cost_amount:
+      payload.productionCostAmount != null ? Math.round(Number(payload.productionCostAmount) || 0) : null,
+    line_items_json:
+      Array.isArray(payload.lineItems) && payload.lineItems.length > 0 ? payload.lineItems : null,
     updated_at: new Date().toISOString(),
   };
   const sb = getSupabase();
@@ -914,6 +928,7 @@ function canPatchQuoteSb(
   if (actor.role === 'مالك' || actor.role === 'مدير مبيعات') return true;
   if (actor.role === 'مندوب' && String(existing.created_by_id || '') === actor.id) return true;
   if (actor.role === 'مدير إنتاج' && String(existing.production_assigned_id || '') === actor.id) return true;
+  if (actor.role === 'مدير إنتاج' && String(existing.created_by_id || '') === actor.id) return true;
   return false;
 }
 
@@ -959,6 +974,9 @@ export async function patchPriceQuoteSb(
   }
   if (patch.productionCostAmount !== undefined) {
     rowUp.production_cost_amount = Math.round(Number(patch.productionCostAmount) || 0);
+  }
+  if (patch.lineItems !== undefined) {
+    rowUp.line_items_json = Array.isArray(patch.lineItems) && patch.lineItems.length > 0 ? patch.lineItems : null;
   }
 
   const { data, error } = await sb.from('price_quotes').update(rowUp).eq('id', id).select('*').single();

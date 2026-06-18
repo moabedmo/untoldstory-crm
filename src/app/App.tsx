@@ -6,7 +6,7 @@ import {
   Menu, X, ChevronRight, ChevronLeft, MessageSquare, CheckCircle2, TrendingUp, Building2, Home,
   DollarSign, ShieldCheck, Lock, Wallet, Receipt, FileUp, PieChart as PieIcon, 
   BarChart3, Calendar, Layers, Zap, Star, AlertCircle, FileText, Banknote, Trash2,
-  XCircle, ArrowLeftRight
+  XCircle, ArrowLeftRight, Printer, PlusCircle
 } from 'lucide-react';
 import { 
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
@@ -27,6 +27,7 @@ import {
   ManualJournalLine,
   ManualJournalEntry,
   PriceQuote,
+  PriceQuoteLineItem,
   PaymentInstallment,
   ClientPayment,
   CustodyFund,
@@ -69,6 +70,8 @@ import { getSupabase } from '@/lib/supabase/client';
 import { mapUserFromRow } from '@/lib/supabase/postgrestMappers';
 import { isServerDataMode } from '@/config/dataSource';
 import { fetchLeadByIdApi } from '@/lib/api/leadsApi';
+import { getPrintBrandingLogoSrc, uploadCompanyLogoSb } from '@/lib/supabase/brandingLogoStorage';
+import { buildPriceQuotePrintHtml, openPriceQuotePrintWindow } from '@/lib/print/priceQuoteDocument';
 import { expenseSubmitterDisplay } from '@/lib/expenseSubmitterDisplay';
 import {
   INBOUND_CHANNEL_SOURCES,
@@ -428,8 +431,9 @@ const OwnerDashboard = ({ onGoToTab, openAccountantSubTab, openBookingsWithInten
     const header = escapeHtml(printBrandingSettings.reportHeader || t('ownerDash.defaultHeader'));
     const footer = escapeHtml(printBrandingSettings.reportFooter || '');
     const primaryColor = printBrandingSettings.primaryColor || '#4F46E5';
-    const logo = printBrandingSettings.logoDataUrl
-      ? `<img src="${printBrandingSettings.logoDataUrl}" alt="logo" style="height:48px;max-width:160px;object-fit:contain;" />`
+    const logoSrc = getPrintBrandingLogoSrc(printBrandingSettings);
+    const logo = logoSrc
+      ? `<img src="${logoSrc}" alt="logo" style="height:48px;max-width:160px;object-fit:contain;" />`
       : '';
     const printDate = new Date().toLocaleString(dateLocale);
     const signatureName = escapeHtml(printBrandingSettings.signatureName || '');
@@ -1791,8 +1795,9 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
     const header = escapeHtml(printBrandingSettings.reportHeader || t('repDash.printDefaultHeader'));
     const footer = escapeHtml(printBrandingSettings.reportFooter || '');
     const primaryColor = printBrandingSettings.primaryColor || '#4F46E5';
-    const logo = printBrandingSettings.logoDataUrl
-      ? `<img src="${printBrandingSettings.logoDataUrl}" alt="logo" style="height:44px;max-width:140px;object-fit:contain;" />`
+    const logoSrc = getPrintBrandingLogoSrc(printBrandingSettings);
+    const logo = logoSrc
+      ? `<img src="${logoSrc}" alt="logo" style="height:44px;max-width:140px;object-fit:contain;" />`
       : '';
     const printDate = new Date().toLocaleString(dateLocale);
     const signatureName = escapeHtml(printBrandingSettings.signatureName || '');
@@ -1887,8 +1892,9 @@ const AccountantView = ({ onGoToTab }: { onGoToTab?: (tab: string) => void }) =>
     const header = escapeHtml(printBrandingSettings.reportHeader || t('repDash.printDefaultHeader'));
     const footer = escapeHtml(printBrandingSettings.reportFooter || '');
     const primaryColor = printBrandingSettings.primaryColor || '#4F46E5';
-    const logo = printBrandingSettings.logoDataUrl
-      ? `<img src="${printBrandingSettings.logoDataUrl}" alt="logo" style="height:44px;max-width:140px;object-fit:contain;" />`
+    const logoSrc = getPrintBrandingLogoSrc(printBrandingSettings);
+    const logo = logoSrc
+      ? `<img src="${logoSrc}" alt="logo" style="height:44px;max-width:140px;object-fit:contain;" />`
       : '';
     const printDate = new Date().toLocaleString(dateLocale);
     const signatureName = escapeHtml(printBrandingSettings.signatureName || '');
@@ -6721,10 +6727,22 @@ const SalesManagerSettings = ({
       toast.error(t('settingsWork.logoTooLarge'));
       return;
     }
+    if (isServerDataMode() && isSupabaseDirectMode()) {
+      void uploadCompanyLogoSb(file)
+        .then((logoUrl) => {
+          updatePrintBrandingSettings({ logoUrl, logoDataUrl: '' });
+          toast.success(t('settingsWork.logoUpdated'));
+        })
+        .catch((err: unknown) => {
+          const msg = err instanceof Error ? err.message : String(err || '');
+          toast.error(msg || t('settingsWork.logoUploadFailed'));
+        });
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       const logoDataUrl = String(reader.result || '');
-      updatePrintBrandingSettings({ logoDataUrl });
+      updatePrintBrandingSettings({ logoDataUrl, logoUrl: '' });
       toast.success(t('settingsWork.logoUpdated'));
     };
     reader.readAsDataURL(file);
@@ -7626,9 +7644,9 @@ const SalesManagerSettings = ({
             >
               {t('settingsWork.uploadLogo')}
             </button>
-            {printBrandingSettings.logoDataUrl && canEditBranding && (
+            {getPrintBrandingLogoSrc(printBrandingSettings) && canEditBranding && (
               <button
-                onClick={() => updatePrintBrandingSettings({ logoDataUrl: '' })}
+                onClick={() => updatePrintBrandingSettings({ logoDataUrl: '', logoUrl: '' })}
                 className="px-3 py-2 rounded-xl text-sm font-black bg-rose-500/20 text-rose-300"
               >
                 {t('settingsWork.removeLogo')}
@@ -7697,10 +7715,10 @@ const SalesManagerSettings = ({
             placeholder={t('settingsWork.signatureTitle')}
           />
         </div>
-        {printBrandingSettings.logoDataUrl && (
+        {getPrintBrandingLogoSrc(printBrandingSettings) && (
           <div className="bg-[#0B1020]/60 border border-white/10 rounded-xl p-3">
             <p className="text-xs text-zinc-400 mb-2">{t('settingsWork.logoPreview')}</p>
-            <img src={printBrandingSettings.logoDataUrl} alt="company logo" className="h-16 w-auto object-contain" />
+            <img src={getPrintBrandingLogoSrc(printBrandingSettings)} alt="company logo" className="h-16 w-auto object-contain" />
           </div>
         )}
       </div>
@@ -8084,8 +8102,9 @@ const RepProfessionalDashboard = ({ currentUser, onGoToTab }: { currentUser: Use
     const header = escapeHtml(printBrandingSettings.reportHeader || t('repDash.printDefaultHeader'));
     const footer = escapeHtml(printBrandingSettings.reportFooter || '');
     const primaryColor = printBrandingSettings.primaryColor || '#4F46E5';
-    const logo = printBrandingSettings.logoDataUrl
-      ? `<img src="${printBrandingSettings.logoDataUrl}" alt="logo" style="height:42px;max-width:130px;object-fit:contain;" />`
+    const logoSrc = getPrintBrandingLogoSrc(printBrandingSettings);
+    const logo = logoSrc
+      ? `<img src="${logoSrc}" alt="logo" style="height:42px;max-width:130px;object-fit:contain;" />`
       : '';
     const printDate = new Date().toLocaleString(dateLocale);
     const signatureName = escapeHtml(printBrandingSettings.signatureName || '');
@@ -10932,8 +10951,162 @@ const CustodySettlementReviewBlock = ({ lines, fund }: { lines: CustodySpendLine
   );
 };
 
+const ProductionCreateQuoteModal = ({
+  open,
+  onClose,
+  onCreated,
+}: {
+  open: boolean;
+  onClose: () => void;
+  onCreated?: (quote: PriceQuote) => void;
+}) => {
+  const { t, i18n } = useTranslation();
+  const { dir } = useAppDirection();
+  const dateLocale = i18n.language === 'en' ? 'en-US' : 'ar-EG';
+  const { addProductionPriceQuote, accountingPolicy } = useData();
+  type Line = { id: string; desc: string; amount: string };
+  const newLine = (): Line => ({ id: `pl-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, desc: '', amount: '' });
+  const [customerName, setCustomerName] = useState('');
+  const [title, setTitle] = useState('');
+  const [costCenter, setCostCenter] = useState('عام');
+  const [note, setNote] = useState('');
+  const [pricingNote, setPricingNote] = useState('');
+  const [vatRate, setVatRate] = useState('14');
+  const [companyMarginPercent, setCompanyMarginPercent] = useState('0');
+  const [lines, setLines] = useState<Line[]>([newLine()]);
+  const [busy, setBusy] = useState(false);
+  const allowedCC = accountingPolicy.allowedCostCentersForQuotes;
+
+  useEffect(() => {
+    if (!open) return;
+    setCustomerName('');
+    setTitle('');
+    setNote('');
+    setPricingNote('');
+    setVatRate('14');
+    setCompanyMarginPercent('0');
+    setLines([newLine()]);
+    setCostCenter(allowedCC.includes('عام') ? 'عام' : allowedCC[0] || 'عام');
+  }, [open, allowedCC.join(',')]);
+
+  if (!open) return null;
+
+  const costSubtotal = lines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
+  const cmp = Math.min(100, Math.max(0, Number(companyMarginPercent) || 0));
+  const preVat = Math.round(costSubtotal * (1 + cmp / 100));
+  const vatAmt = Math.round(preVat * (Number(vatRate) || 0) / 100);
+  const total = preVat + vatAmt;
+
+  const submit = async () => {
+    if (!customerName.trim()) { toast.error(t('productionFund.quoteCustomerRequired')); return; }
+    if (!title.trim()) { toast.error(t('productionFund.quoteTitleRequired')); return; }
+    const lineItems: PriceQuoteLineItem[] = lines
+      .map((l) => ({ id: l.id, description: l.desc.trim(), amount: Math.round(Number(l.amount) || 0) }))
+      .filter((l) => l.description && l.amount > 0);
+    if (lineItems.length === 0) { toast.error(t('productionFund.addLineWithPrice')); return; }
+    setBusy(true);
+    try {
+      const ok = await addProductionPriceQuote({
+        customerName: customerName.trim(),
+        title: title.trim(),
+        costCenter: costCenter.trim() || 'عام',
+        note: note.trim() || undefined,
+        lineItems,
+        companyMarginPercent: cmp,
+        vatRate: Number(vatRate) || 14,
+        pricingNote: pricingNote.trim() || undefined,
+      });
+      if (!ok) { toast.error(t('productionFund.quoteCreateFailed')); return; }
+      toast.success(t('productionFund.quoteCreateSuccess'));
+      onClose();
+      onCreated?.({
+        id: '',
+        leadId: 'manual',
+        customerName: customerName.trim(),
+        title: title.trim(),
+        amount: preVat,
+        vatRate: Number(vatRate) || 14,
+        vatAmount: vatAmt,
+        totalAmount: total,
+        costCenter,
+        createdById: '',
+        createdByName: '',
+        createdAt: new Date().toISOString(),
+        status: 'قيد اعتماد المالك',
+        lineItems,
+        companyMarginPercent: cmp,
+        productionCostAmount: costSubtotal,
+      });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : t('productionFund.quoteCreateFailed'));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[240] bg-black/70 backdrop-blur-sm flex items-center justify-center p-4" dir={dir}>
+      <div className="w-full max-w-2xl max-h-[90vh] overflow-y-auto rounded-3xl border border-white/15 bg-[#0B1020] shadow-2xl p-6 space-y-4 custom-scrollbar">
+        <div>
+          <p className="text-xs text-zinc-500">{t('productionFund.createQuoteHint')}</p>
+          <h3 className="text-lg font-black text-white mt-1">{t('productionFund.createQuoteTitle')}</h3>
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs font-bold text-zinc-400 mb-1">{t('productionFund.quoteCustomerLabel')} *</label>
+            <input value={customerName} onChange={(e) => setCustomerName(e.target.value)} className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-bold text-zinc-400 mb-1">{t('productionFund.quoteProjectLabel')} *</label>
+            <input value={title} onChange={(e) => setTitle(e.target.value)} className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div>
+          <label className="block text-xs font-bold text-zinc-400 mb-1">{t('productionFund.costCenterLabel')}</label>
+          <select value={costCenter} onChange={(e) => setCostCenter(e.target.value)} className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm">
+            {(allowedCC.length > 0 ? allowedCC : ['عام']).map((cc) => (
+              <option key={cc} value={cc}>{cc === 'عام' ? t('productionFund.generalCostCenter') : cc}</option>
+            ))}
+          </select>
+        </div>
+        <div className="space-y-2">
+          <p className="text-xs font-bold text-zinc-400">{t('productionFund.pricingLinesTitle')}</p>
+          {lines.map((line) => (
+            <div key={line.id} className="flex gap-2 items-center">
+              <input value={line.desc} onChange={(e) => setLines((prev) => prev.map((l) => l.id === line.id ? { ...l, desc: e.target.value } : l))} placeholder={t('productionFund.lineDescPh')} className="flex-1 bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+              <input type="number" min={0} value={line.amount} onChange={(e) => setLines((prev) => prev.map((l) => l.id === line.id ? { ...l, amount: e.target.value } : l))} placeholder={t('common.currency')} className="w-28 bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+              <button type="button" onClick={() => setLines((prev) => { const next = prev.filter((l) => l.id !== line.id); return next.length ? next : [newLine()]; })} className="p-2 text-rose-300"><Trash2 className="w-4 h-4" /></button>
+            </div>
+          ))}
+          <button type="button" onClick={() => setLines((prev) => [...prev, newLine()])} className="text-xs font-black text-indigo-300">{t('productionFund.addLine')}</button>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">{t('productionFund.companyMarginLabel')}</label>
+            <input type="number" min={0} max={100} value={companyMarginPercent} onChange={(e) => setCompanyMarginPercent(e.target.value)} className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs text-zinc-400 mb-1">{t('productionFund.vatLabel')}</label>
+            <input type="number" min={0} max={100} value={vatRate} onChange={(e) => setVatRate(e.target.value)} className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div className="bg-white/[0.04] border border-white/10 rounded-2xl p-4 text-sm space-y-1">
+          <div className="flex justify-between text-zinc-400"><span>{t('productionFund.grandTotal')}</span><span className="font-black text-emerald-300">{total.toLocaleString(dateLocale)} {t('common.currency')}</span></div>
+        </div>
+        <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} placeholder={t('productionFund.quoteClientNotePh')} className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm resize-y" />
+        <input value={pricingNote} onChange={(e) => setPricingNote(e.target.value)} placeholder={t('productionFund.pricingNotePh')} className="w-full bg-[#111A32] border border-white/15 rounded-xl px-3 py-2 text-sm" />
+        <div className="flex gap-2 justify-end pt-2">
+          <button type="button" onClick={onClose} className="px-4 py-2 rounded-xl text-sm font-bold bg-white/10 border border-white/15">{t('common.cancel')}</button>
+          <button type="button" disabled={busy} onClick={() => void submit()} className="px-4 py-2 rounded-xl text-sm font-black text-white bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50">{busy ? t('productionFund.submitting') : t('productionFund.saveQuote')}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const ProductionCustodyDashboard = () => {
   const { t, i18n } = useTranslation();
+  const { dir } = useAppDirection();
   const dateLocale = i18n.language === 'en' ? 'en-US' : 'ar-EG';
   const {
     currentUser,
@@ -10952,7 +11125,9 @@ const ProductionCustodyDashboard = () => {
     reassignPricingRequest,
     productionUpdateWorkOrder,
     users,
+    printBrandingSettings,
   } = useData();
+  const [showCreateQuote, setShowCreateQuote] = useState(false);
   type PricingLine = { id: string; desc: string; amount: string };
   const newLine = (): PricingLine => ({ id: `pl-${Date.now()}-${Math.random().toString(36).slice(2,6)}`, desc: '', amount: '' });
   type PricingDraft = { lines: PricingLine[]; vatRate: string; note: string; companyMarginPercent: string };
@@ -10990,7 +11165,7 @@ const ProductionCustodyDashboard = () => {
       .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
   }, [shootBookings, currentUser?.id]);
 
-  const [prodActiveTab, setProdActiveTab] = useState<'requests' | 'pricing' | 'workorders'>(() => {
+  const [prodActiveTab, setProdActiveTab] = useState<'requests' | 'pricing' | 'quotes' | 'workorders'>(() => {
     if (!currentUser?.id) return 'requests';
     const uid = String(currentUser.id).trim();
     const uname = (currentUser.name || '').trim();
@@ -11014,6 +11189,44 @@ const ProductionCustodyDashboard = () => {
           (uname && String(q.productionAssignedName || '').trim() === uname)),
     );
   }, [priceQuotes, currentUser?.id, currentUser?.name]);
+
+  const myCreatedQuotes = useMemo(() => {
+    if (!currentUser?.id) return [];
+    const uid = String(currentUser.id).trim();
+    return (priceQuotes as PriceQuote[])
+      .filter((q) => String(q.createdById || '').trim() === uid && (q.amount > 0 || (q.lineItems?.length ?? 0) > 0))
+      .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+  }, [priceQuotes, currentUser?.id]);
+
+  const printQuoteDocument = useCallback((q: PriceQuote) => {
+    const html = buildPriceQuotePrintHtml({
+      quote: q,
+      branding: printBrandingSettings,
+      dir,
+      locale: dateLocale,
+      labels: {
+        documentTitle: t('productionFund.printQuoteTitle'),
+        quoteNo: t('productionFund.printQuoteNo'),
+        date: t('productionFund.printDate'),
+        customer: t('productionFund.printCustomer'),
+        project: t('productionFund.printProject'),
+        costCenter: t('productionFund.costCenterLabel'),
+        itemDescription: t('productionFund.printItem'),
+        amount: t('productionFund.printAmount'),
+        subtotal: t('productionFund.printSubtotal'),
+        companyMargin: t('productionFund.companyMarginAmount'),
+        beforeVat: t('productionFund.preVatClient'),
+        vat: t('productionFund.vatAmount'),
+        vatRate: t('productionFund.vatLabel'),
+        grandTotal: t('productionFund.grandTotal'),
+        notes: t('productionFund.printNotes'),
+        preparedBy: t('productionFund.printPreparedBy'),
+        currency: t('common.currency'),
+        validNote: t('productionFund.printValidNote'),
+      },
+    });
+    openPriceQuotePrintWindow(html);
+  }, [printBrandingSettings, dir, dateLocale, t]);
 
   const quoteStatusLabel: Record<PriceQuote['status'], string> = {
     'بانتظار التسعير': t('productionFund.quoteStatusPricing'),
@@ -11330,6 +11543,12 @@ const ProductionCustodyDashboard = () => {
           )}
         </button>
         <button
+          onClick={() => setProdActiveTab('quotes')}
+          className={`relative px-5 py-2 rounded-xl text-sm font-black transition-all ${prodActiveTab === 'quotes' ? 'bg-indigo-600 text-white' : 'text-zinc-400 hover:text-white'}`}
+        >
+          {t('productionFund.tabQuotes')}
+        </button>
+        <button
           onClick={() => setProdActiveTab('workorders')}
           className={`relative px-5 py-2 rounded-xl text-sm font-black transition-all ${prodActiveTab === 'workorders' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:text-white'}`}
         >
@@ -11513,6 +11732,9 @@ const ProductionCustodyDashboard = () => {
                     type="button"
                     onClick={async () => {
                       if (costSubtotal <= 0) { toast.error(t('productionFund.addLineWithPrice')); return; }
+                      const lineItems: PriceQuoteLineItem[] = draft.lines
+                        .map((l) => ({ id: l.id, description: l.desc.trim(), amount: Math.round(Number(l.amount) || 0) }))
+                        .filter((l) => l.description && l.amount > 0);
                       const ok = await productionPriceQuote(
                         q.id,
                         preVatAmount,
@@ -11520,6 +11742,7 @@ const ProductionCustodyDashboard = () => {
                         draft.note || undefined,
                         companyPct,
                         costSubtotal,
+                        lineItems,
                       );
                       if (ok) { toast.success(t('productionFund.sendPriceSuccess')); setPricingForm((p) => { const n = { ...p }; delete n[q.id]; return n; }); }
                       else toast.error(t('productionFund.priceFailed'));
@@ -11561,12 +11784,70 @@ const ProductionCustodyDashboard = () => {
                       <p className="text-[10px] text-zinc-500">
                         {typeof q.totalAmount === 'number' ? `${q.totalAmount.toLocaleString(dateLocale)} ${t('common.currency')}` : t('productionFund.beforeVatAmount', { amount: q.amount.toLocaleString(dateLocale), currency: t('common.currency') })}
                       </p>
+                      {(q.amount > 0 || (q.lineItems?.length ?? 0) > 0) && (
+                        <button
+                          type="button"
+                          onClick={() => printQuoteDocument(q)}
+                          className="mt-1 inline-flex items-center gap-1 px-2 py-1 rounded-lg text-[10px] font-black bg-indigo-500/20 text-indigo-200 border border-indigo-500/30"
+                        >
+                          <Printer className="w-3 h-3" />
+                          {t('productionFund.printQuote')}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))}
               </div>
             </details>
           )}
+        </div>
+      )}
+
+      {prodActiveTab === 'quotes' && (
+        <div className="space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-zinc-400">{t('productionFund.quotesTabHint')}</p>
+            <button
+              type="button"
+              onClick={() => setShowCreateQuote(true)}
+              className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl text-sm font-black bg-indigo-600 text-white hover:bg-indigo-500"
+            >
+              <PlusCircle className="w-4 h-4" />
+              {t('productionFund.createQuoteBtn')}
+            </button>
+          </div>
+          {myCreatedQuotes.length === 0 ? (
+            <div className="bg-white/[0.03] border border-white/10 rounded-3xl p-12 text-center text-zinc-500">
+              <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              {t('productionFund.noCreatedQuotes')}
+            </div>
+          ) : (
+            <div className="grid gap-3">
+              {myCreatedQuotes.map((q) => (
+                <div key={q.id} className="bg-[#0F1528]/80 border border-indigo-400/20 rounded-3xl p-5 flex flex-wrap items-start justify-between gap-3">
+                  <div>
+                    <p className="font-black text-white">{q.title}</p>
+                    <p className="text-sm text-zinc-400">{q.customerName}</p>
+                    <p className="text-[10px] text-zinc-500 mt-1">{q.id} — {quoteStatusLabel[q.status]}</p>
+                  </div>
+                  <div className="flex flex-col items-end gap-2">
+                    <span className="font-black text-emerald-300">
+                      {(q.totalAmount ?? q.amount).toLocaleString(dateLocale)} {t('common.currency')}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => printQuoteDocument(q)}
+                      className="inline-flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-black bg-white/10 border border-white/15 hover:bg-white/15"
+                    >
+                      <Printer className="w-4 h-4" />
+                      {t('productionFund.printQuote')}
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <ProductionCreateQuoteModal open={showCreateQuote} onClose={() => setShowCreateQuote(false)} />
         </div>
       )}
 
