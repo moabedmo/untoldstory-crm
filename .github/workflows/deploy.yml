@@ -2,8 +2,8 @@ name: Build & Deploy to Hostinger
 
 on:
   push:
-    branches: [main]          # اشتغل كل ما ترفع على main
-  workflow_dispatch:           # أو شغّله يدوياً من GitHub
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   deploy:
@@ -16,11 +16,32 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Install dependencies
         run: npm ci
+
+      - name: Validate deploy secrets
+        env:
+          FTP_SERVER: ${{ secrets.FTP_SERVER }}
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for key in FTP_SERVER FTP_USERNAME FTP_PASSWORD VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY; do
+            if [ -z "${!key:-}" ]; then
+              echo "::error::Missing GitHub secret: $key"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Add secrets under Settings → Secrets and variables → Actions, then re-run."
+            exit 1
+          fi
 
       - name: Build
         env:
@@ -28,88 +49,27 @@ jobs:
           VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
           VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
           VITE_PUBLIC_APP_URL: ${{ secrets.VITE_PUBLIC_APP_URL }}
-          # VITE_BASE_PATH: /   # غيّر لو الموقع في مسار فرعي
         run: npm run build
+
+      - name: Pack Hostinger bundle
+        run: node scripts/pack-hostinger.mjs --skip-build
 
       - name: Deploy via FTP to Hostinger
         env:
           FTP_SERVER: ${{ secrets.FTP_SERVER }}
-          FTP_USER: ${{ secrets.FTP_USERNAME }}
-          FTP_PASS: ${{ secrets.FTP_PASSWORD }}
-        run: |
-          python3 - << 'PYEOF'
-          import ftplib, os, pathlib, sys
+          FTP_USERNAME: ${{ secrets.FTP_USERNAME }}
+          FTP_PASSWORD: ${{ secrets.FTP_PASSWORD }}
+          FTP_REMOTE_DIR: ${{ secrets.FTP_REMOTE_DIR }}
+        run: node scripts/deploy-hostinger-ftp.mjs
 
-          server   = os.environ["FTP_SERVER"]
-          username = os.environ["FTP_USER"]
-          password = os.environ["FTP_PASS"]
-          local_dir = pathlib.Path("dist")
-          remote_dir = "/public_html"
-
-          print(f"Connecting to {server} as {username}...")
-          try:
-              ftp = ftplib.FTP_TLS()
-              ftp.connect(server, 21, timeout=60)
-              ftp.auth()
-              ftp.prot_p()
-          except Exception:
-              print("FTPS failed, trying plain FTP...")
-              ftp = ftplib.FTP()
-              ftp.connect(server, 21, timeout=60)
-
-          ftp.login(username, password)
-          print("Login successful!")
-
-          def delete_remote_assets(ftp, remote_assets_path):
-              """Remove stale hashed bundles so browsers cannot keep loading old UI."""
-              try:
-                  names = ftp.nlst(remote_assets_path)
-              except Exception as exc:
-                  print(f"Skip asset cleanup ({remote_assets_path}): {exc}")
-                  return
-              for name in names:
-                  base = name.rsplit("/", 1)[-1]
-                  if base in (".", ".."):
-                      continue
-                  try:
-                      ftp.delete(name)
-                      print(f"Deleted stale {name}")
-                  except Exception:
-                      try:
-                          ftp.rmd(name)
-                          print(f"Removed dir {name}")
-                      except Exception as exc:
-                          print(f"Could not delete {name}: {exc}")
-
-          delete_remote_assets(ftp, f"{remote_dir}/assets")
-
-          def upload_dir(ftp, local_path, remote_path):
-              try:
-                  ftp.mkd(remote_path)
-              except Exception:
-                  pass
-              for item in local_path.iterdir():
-                  r = f"{remote_path}/{item.name}"
-                  if item.is_dir():
-                      upload_dir(ftp, item, r)
-                  else:
-                      print(f"Uploading {r}")
-                      with open(item, "rb") as f:
-                          ftp.storbinary(f"STOR {r}", f)
-
-          upload_dir(ftp, local_dir, remote_dir)
-          ftp.quit()
-          print("Done!")
-          PYEOF
-
-      - name: Verify live site bundle (optional)
+      - name: Verify live site bundle
         env:
           VITE_PUBLIC_APP_URL: ${{ secrets.VITE_PUBLIC_APP_URL }}
         run: |
-          set -e
-          BUNDLE=$(grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' dist/index.html | head -1 || true)
+          set -euo pipefail
+          BUNDLE=$(grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' hostinger-dist/index.html | head -1 || true)
           echo "Built bundle: ${BUNDLE:-unknown}"
-          if [ -z "$VITE_PUBLIC_APP_URL" ]; then
+          if [ -z "${VITE_PUBLIC_APP_URL:-}" ]; then
             echo "Skip live check: VITE_PUBLIC_APP_URL secret not set."
             exit 0
           fi
@@ -123,5 +83,6 @@ jobs:
             echo "Live site serves the new bundle ($BUNDLE)."
           else
             LIVE=$(echo "$HTML" | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -1 || true)
-            echo "::warning::Live bundle (${LIVE:-none}) does not match build ($BUNDLE). Clear CDN/cache or retry deploy."
+            echo "::error::Live bundle (${LIVE:-none}) does not match build ($BUNDLE). Clear CDN/cache or set FTP_REMOTE_DIR."
+            exit 1
           fi

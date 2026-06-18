@@ -26,7 +26,13 @@ function copyDirRecursive(src, dest) {
 }
 
 process.chdir(root);
-execSync('npm run build', { stdio: 'inherit' });
+const skipBuild = process.argv.includes('--skip-build');
+if (!skipBuild) {
+  execSync('npm run build', { stdio: 'inherit' });
+} else if (!fs.existsSync(path.join(dist, 'index.html'))) {
+  console.error('[pack-hostinger] --skip-build but dist/index.html is missing');
+  process.exit(1);
+}
 
 if (!fs.existsSync(path.join(dist, 'index.html'))) {
   console.error('[pack-hostinger] dist/index.html missing after build');
