@@ -7,7 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.join(path.dirname(fileURLToPath(import.meta.url)), '..');
-const indexPath = path.join(root, 'api', 'src', 'index.js');
+const indexPath = path.join(root, 'server-api', 'src', 'index.js');
 const apiSrcDir = path.join(root, 'src', 'lib', 'api');
 
 const indexContent = fs.readFileSync(indexPath, 'utf8');

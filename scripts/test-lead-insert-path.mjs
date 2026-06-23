@@ -22,7 +22,7 @@ function loadEnv(rel) {
   return out;
 }
 
-const api = loadEnv('api/.env');
+const api = loadEnv('server-api/.env');
 const local = loadEnv('.env.local');
 const url = api.DATABASE_URL;
 const supabaseUrl = (local.VITE_SUPABASE_URL || '').replace(/\/$/, '');

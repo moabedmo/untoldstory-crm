@@ -7,14 +7,14 @@ import http from 'node:http';
 import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { processIntegrationsOAuthRequest } from '../api/src/lib/integrationsOAuthEngine.js';
+import { processIntegrationsOAuthRequest } from '../server-api/src/lib/integrationsOAuthEngine.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const PROJECT_ROOT = path.resolve(__dirname, '..');
 
 for (const p of [
   path.join(PROJECT_ROOT, '.env'),
-  path.join(PROJECT_ROOT, 'api', '.env'),
+  path.join(PROJECT_ROOT, 'server-api', '.env'),
   path.join(PROJECT_ROOT, '.env.local'),
 ]) {
   try {

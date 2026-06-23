@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * يطبّق SQL المعلّق: عمولة المندوبين + سياسات RLS
- * يقرأ DATABASE_URL من api/.env أو متغير البيئة
+ * يقرأ DATABASE_URL من server-api/.env أو متغير البيئة
  */
 import { readFileSync, existsSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -11,7 +11,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 function loadDatabaseUrl() {
   if (process.env.DATABASE_URL?.trim()) return process.env.DATABASE_URL.trim();
-  const envPath = join(root, 'api', '.env');
+  const envPath = join(root, 'server-api', '.env');
   if (!existsSync(envPath)) return '';
   const text = readFileSync(envPath, 'utf8');
   const m = text.match(/^DATABASE_URL=(.+)$/m);
@@ -25,7 +25,7 @@ function loadDatabaseUrl() {
 
 const url = loadDatabaseUrl();
 if (!url || /USER:PASSWORD|xxxx/i.test(url)) {
-  console.error('❌ DATABASE_URL غير معيّن في api/.env');
+  console.error('❌ DATABASE_URL غير معيّن في server-api/.env');
   process.exit(1);
 }
 

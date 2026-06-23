@@ -10,7 +10,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const envPath = path.join(__dirname, '..', '.env');
 
 if (!fs.existsSync(envPath)) {
-  console.error('لا يوجد ملف api/.env');
+  console.error('لا يوجد ملف server-api/.env');
   process.exit(1);
 }
 

@@ -30,7 +30,7 @@ function loadEnvFile(relPath) {
 }
 
 const local = loadEnvFile('.env.local');
-const apiEnv = loadEnvFile('api/.env');
+const apiEnv = loadEnvFile('server-api/.env');
 
 const supabaseUrl = (process.env.VITE_SUPABASE_URL || local.VITE_SUPABASE_URL || '').replace(/\/$/, '');
 const anonKey = process.env.VITE_SUPABASE_ANON_KEY || local.VITE_SUPABASE_ANON_KEY || '';

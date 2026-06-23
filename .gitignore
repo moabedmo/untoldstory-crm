@@ -6,6 +6,7 @@ build/
 .env
 .env.local
 .env.deploy
+.env.migrate
 .env.*.local
 !.env*.example
 backend/.integration-tokens.json

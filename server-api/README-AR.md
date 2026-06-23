@@ -9,8 +9,8 @@
 
 ## ٢) رفع الكود
 
-- ارفع مجلد **`api/`** كامل للسيرفر (أو اعمل clone للمشروع).
-- على السيرفر: `cd api && npm ci` (أو `npm install`).
+- ارفع مجلد **`server-api/`** كامل للسيرفر (أو اعمل clone للمشروع).
+- على السيرفر: `cd server-api && npm ci` (أو `npm install`).
 - انسخ `.env.example` إلى `.env` وضع `DATABASE_URL` الصحيح و`CORS_ORIGINS` (عنوان موقع الواجهة على الإنترنت + localhost للتطوير).
 
 ## ٣) تهيئة القاعدة
@@ -19,10 +19,10 @@
 
 > **ليس من صفحة API Keys في Supabase:** الربط هنا بـ **رابط قاعدة بيانات Postgres** من **Settings → Database → Connection string**، وليس مفاتيح `anon` / `service_role`.
 
-في مجلد `api` يجب أن يحتوي ملف **`.env`** على **`DATABASE_URL`** و**`DIRECT_URL`** (من Supabase: رابط الـ pooling + رابط **Direct connection** — التفاصيل في الدليل).
+في مجلد `server-api` يجب أن يحتوي ملف **`.env`** على **`DATABASE_URL`** و**`DIRECT_URL`** (من Supabase: رابط الـ pooling + رابط **Direct connection** — التفاصيل في الدليل).
 
 ```bash
-cd api
+cd server-api
 npm install
 npm run db:generate
 npm run db:migrate

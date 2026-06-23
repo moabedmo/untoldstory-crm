@@ -1,5 +1,5 @@
 # Express API — الإنتاج يستخدم Supabase مباشرة (VITE_USE_SUPABASE=1)
-api/
+server-api/
 
 # باكند محلي / OAuth — لا يُنشر على Vercel
 backend/

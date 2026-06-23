@@ -1,6 +1,5 @@
 /**
- * Vercel Hobby: max 12 Serverless Functions. Root /api is auto-detected.
- * On Vercel CI, remove api/ before build (restored from git each deploy).
+ * Vercel Hobby: static SPA only (Express lives in server-api/, not /api).
  */
 import { execSync } from 'node:child_process';
 import fs from 'node:fs';
@@ -8,14 +7,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const apiDir = path.join(root, 'api');
 
 process.chdir(root);
-
-if (process.env.VERCEL === '1' && fs.existsSync(apiDir)) {
-  fs.rmSync(apiDir, { recursive: true, force: true });
-  console.log('[vercel-build] Removed api/ on Vercel (static SPA only, no Express functions)');
-}
 
 execSync('npm run pack:hostinger', { stdio: 'inherit', env: process.env });
 

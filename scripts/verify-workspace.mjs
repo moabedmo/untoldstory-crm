@@ -13,5 +13,5 @@ function run(cmd, cwd = root) {
 }
 
 console.log('[verify] prisma validate …');
-run('npm exec prisma validate', path.join(root, 'api'));
+run('npm exec prisma validate', path.join(root, 'server-api'));
 console.log('[verify] done.');

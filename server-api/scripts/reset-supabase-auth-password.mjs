@@ -16,7 +16,7 @@ import dotenv from 'dotenv';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '../..');
 
-for (const rel of ['.env.local', 'api/.env', '.env']) {
+for (const rel of ['.env.local', 'server-api/.env', '.env']) {
   const p = resolve(root, rel);
   if (existsSync(p)) dotenv.config({ path: p });
 }

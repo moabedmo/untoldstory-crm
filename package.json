@@ -13,7 +13,7 @@
     "dev:auto": "concurrently -k -n ui,api -c cyan,magenta \"npm run dev\" \"npm run api:dev\"",
     "mirror:landing": "node scripts/mirror-site.mjs",
     "oauth:server": "node backend/oauth-server.mjs",
-    "api:dev": "npm --prefix api run dev",
+    "api:dev": "npm --prefix server-api run dev",
     "check:wiring": "node scripts/assert-api-wiring.mjs",
     "check:scenarios": "node scripts/run-system-scenarios.mjs",
     "check:accounting": "node scripts/accounting-invariants.mjs",
