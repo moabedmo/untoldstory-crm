@@ -4,8 +4,8 @@ server-api/
 # باكند محلي / OAuth — لا يُنشر على Vercel
 backend/
 
-# Edge functions تُنشر يدوياً على Supabase
-supabase/
+# Edge functions تُنشر يدوياً على Supabase (جذر المشروع فقط — لا src/lib/supabase)
+/supabase/
 
 # نسخة Hostinger المحلية قبل البناء
 hostinger-dist/
