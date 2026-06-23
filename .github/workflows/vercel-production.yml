@@ -1,0 +1,103 @@
+name: Deploy to Vercel Production
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+# Vercel Git builds keep failing — build on GitHub Ubuntu (proven) then deploy prebuilt.
+concurrency:
+  group: vercel-production
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Validate Vercel secrets
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          missing=0
+          for key in VERCEL_TOKEN VERCEL_ORG_ID VERCEL_PROJECT_ID; do
+            if [ -z "${!key:-}" ]; then
+              echo "::error::Missing GitHub secret: $key"
+              missing=1
+            fi
+          done
+          if [ "$missing" -ne 0 ]; then
+            echo "Add secrets from Vercel → Settings → Tokens / General → Project ID & Team ID"
+            exit 1
+          fi
+
+      - name: Build
+        env:
+          VITE_USE_SUPABASE: ${{ secrets.VITE_USE_SUPABASE }}
+          VITE_SUPABASE_URL: ${{ secrets.VITE_SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.VITE_SUPABASE_ANON_KEY }}
+          VITE_PUBLIC_APP_URL: ${{ secrets.VITE_PUBLIC_APP_URL }}
+          NODE_OPTIONS: --max-old-space-size=4096
+        run: |
+          rm -rf public/globaluntoldstory
+          npm run build
+
+      - name: Install Vercel CLI
+        run: npm i -g vercel@latest
+
+      - name: Deploy prebuilt to Vercel
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
+        run: |
+          set -euo pipefail
+          rm -rf .vercel/output
+          mkdir -p .vercel/output/static
+          cp -r dist/* .vercel/output/static/
+          cat > .vercel/output/config.json << 'EOF'
+          {
+            "version": 3,
+            "routes": [
+              { "handle": "filesystem" },
+              { "src": "/(.*)", "dest": "/index.html" }
+            ]
+          }
+          EOF
+          vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+
+      - name: Verify live bundle
+        env:
+          VITE_PUBLIC_APP_URL: ${{ secrets.VITE_PUBLIC_APP_URL }}
+        run: |
+          set -euo pipefail
+          BUNDLE=$(grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' dist/index.html | head -1 || true)
+          echo "Built bundle: ${BUNDLE:-unknown}"
+          if [ -z "${VITE_PUBLIC_APP_URL:-}" ]; then
+            echo "Skip live check: VITE_PUBLIC_APP_URL not set."
+            exit 0
+          fi
+          ORIGIN="${VITE_PUBLIC_APP_URL%/}"
+          sleep 8
+          HTML=$(curl -fsSL --max-time 45 "$ORIGIN/" || true)
+          if [ -n "$BUNDLE" ] && echo "$HTML" | grep -q "$BUNDLE"; then
+            echo "Live site serves the new bundle ($BUNDLE)."
+          else
+            LIVE=$(echo "$HTML" | grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' | head -1 || true)
+            echo "::warning::Live bundle (${LIVE:-none}) may still be propagating (built: $BUNDLE)."
+          fi
