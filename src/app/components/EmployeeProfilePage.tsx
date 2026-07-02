@@ -3,6 +3,7 @@ import {
   Clock,
   DollarSign,
   FileText,
+  KeyRound,
   Minus,
   Plus,
   RefreshCw,
@@ -30,7 +31,7 @@ export default function EmployeeProfilePage({
   employeeId: string;
   onClose: () => void;
 }) {
-  const { users, attendanceRecords } = useData();
+  const { users, attendanceRecords, currentUser, ownerSetEmployeePassword } = useData();
   const employee = users.find((u) => u.id === employeeId);
 
   const handleRefreshData = () => {
@@ -40,6 +41,9 @@ export default function EmployeeProfilePage({
   const [monthKey, setMonthKey] = useState(getMonthKey);
   const [deductions, setDeductions] = useState<EmployeeDeduction[]>([]);
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showPwdModal, setShowPwdModal] = useState(false);
+  const [newPwd, setNewPwd] = useState('');
+  const [pwdSaving, setPwdSaving] = useState(false);
   const [addType, setAddType] = useState<'خصم' | 'إذن'>('خصم');
   const [addAmount, setAddAmount] = useState('');
   const [addReason, setAddReason] = useState('');
@@ -127,6 +131,22 @@ export default function EmployeeProfilePage({
     } catch (e: unknown) { toast.error(e instanceof Error ? e.message : 'خطأ'); }
   };
 
+  const canResetPassword =
+    currentUser &&
+    employee &&
+    employee.role !== 'مالك' &&
+    employee.id !== currentUser.id &&
+    (currentUser.role === 'مالك' ||
+      (currentUser.role === 'مدير مبيعات' && employee.role === 'مندوب'));
+
+  const handleResetPassword = async () => {
+    if (!employee) return;
+    setPwdSaving(true);
+    const ok = await ownerSetEmployeePassword(employee.id, newPwd);
+    setPwdSaving(false);
+    if (ok) { setShowPwdModal(false); setNewPwd(''); }
+  };
+
   const handleRemoveDeduction = async (id: string) => {
     if (!employee) return;
     try {
@@ -165,6 +185,15 @@ export default function EmployeeProfilePage({
           </div>
         </div>
         <div className="flex items-center gap-2">
+          {canResetPassword && (
+            <button
+              onClick={() => { setShowPwdModal(true); setNewPwd(''); }}
+              title="تغيير كلمة المرور"
+              className="p-2 hover:bg-amber-500/10 rounded-xl transition-all text-amber-400/70 hover:text-amber-300"
+            >
+              <KeyRound className="h-5 w-5" />
+            </button>
+          )}
           <button onClick={handleRefreshData} title="تحديث البيانات" className="p-2 hover:bg-zinc-800 rounded-xl transition-all text-zinc-400 hover:text-[#6366F1]">
             <RefreshCw className="h-5 w-5" />
           </button>
@@ -323,6 +352,61 @@ export default function EmployeeProfilePage({
                 className="bg-[#6366F1] text-white px-5 py-2 rounded-xl font-bold text-sm hover:bg-[#5254E2] transition-all"
               >
                 إضافة
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+
+      {showPwdModal && createPortal(
+        <div
+          className="fixed inset-0 z-[400] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4"
+          role="dialog"
+          aria-modal="true"
+          onClick={() => setShowPwdModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl border border-zinc-700 bg-[#18181B] text-white shadow-2xl p-6 space-y-5"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold flex items-center gap-2">
+                <KeyRound className="h-5 w-5 text-amber-400" />
+                تغيير كلمة مرور الموظف
+              </h3>
+              <button type="button" onClick={() => setShowPwdModal(false)} className="p-1 hover:bg-zinc-700 rounded-lg transition-all">
+                <X className="h-5 w-5 text-zinc-400" />
+              </button>
+            </div>
+            <p className="text-sm text-zinc-400">
+              تعيين كلمة مرور جديدة لـ <span className="text-white font-bold">{employee.name}</span> ({employee.role})
+            </p>
+            {employee.email?.endsWith('@staff.internal') && (
+              <p className="text-xs text-amber-400 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
+                ⚠️ هذا الموظف ليس له بريد إلكتروني حقيقي — عدّل بياناته أولاً وعيّن له بريد حقيقي ثم غيّر كلمة المرور.
+              </p>
+            )}
+            <input
+              type="password"
+              placeholder="كلمة المرور الجديدة (8 أحرف على الأقل)"
+              value={newPwd}
+              onChange={(e) => setNewPwd(e.target.value)}
+              className="w-full bg-[#09090B] border border-zinc-700 rounded-xl py-2.5 px-4 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-amber-500/50 transition-all"
+              autoFocus
+              disabled={employee.email?.endsWith('@staff.internal')}
+            />
+            <div className="flex items-center justify-end gap-3">
+              <button type="button" onClick={() => setShowPwdModal(false)} className="px-4 py-2 text-zinc-400 font-bold hover:text-white transition-all text-sm">
+                إلغاء
+              </button>
+              <button
+                type="button"
+                onClick={handleResetPassword}
+                disabled={pwdSaving || newPwd.length < 8 || Boolean(employee.email?.endsWith('@staff.internal'))}
+                className="bg-amber-500 text-black px-5 py-2 rounded-xl font-bold hover:bg-amber-400 transition-all disabled:opacity-40 text-sm"
+              >
+                {pwdSaving ? 'جاري الحفظ…' : 'تعيين كلمة المرور'}
               </button>
             </div>
           </div>
