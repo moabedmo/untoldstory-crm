@@ -159,49 +159,10 @@ async function setEmployeeAuthPasswordSb(
   await manageEmployeeAuthSb({ targetUserId, email, password });
 }
 
-/** تسجيل مستخدم Auth عبر REST حتى لا تتبدّل جلسة المالك في عميل supabase-js */
-async function authSignUpViaRest(email: string, password: string): Promise<void> {
-  const base = String(import.meta.env.VITE_SUPABASE_URL || '').trim().replace(/\/+$/, '');
-  const anon = String(import.meta.env.VITE_SUPABASE_ANON_KEY || '').trim();
-  if (!base || !anon) throw new Error('إعدادات Supabase ناقصة (VITE_SUPABASE_URL / VITE_SUPABASE_ANON_KEY)');
-  const res = await fetch(`${base}/auth/v1/signup`, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      apikey: anon,
-      Authorization: `Bearer ${anon}`,
-    },
-    body: JSON.stringify({ email, password }),
-  });
-  const j = (await res.json().catch(() => ({}))) as Record<string, unknown>;
-  if (!res.ok) {
-    const desc =
-      (typeof j.error_description === 'string' && j.error_description) ||
-      (typeof j.msg === 'string' && j.msg) ||
-      (typeof j.message === 'string' && j.message) ||
-      (typeof j.error === 'string' && j.error) ||
-      `HTTP ${res.status}`;
-    const s = String(desc);
-    if (/already registered|already been registered|User already|duplicate|exists/i.test(s)) {
-      throw new Error('هذا البريد مسجل مسبقاً في تسجيل الدخول (Authentication)');
-    }
-    if (
-      res.status === 429 ||
-      /rate limit|too many requests|email rate limit|over_email_send_rate/i.test(s)
-    ) {
-      throw new Error(
-        'وصل مشروع Supabase لحد إرسال رسائل البريد (تأكيد الحساب). جرّب بعد دقيقة أو دقيقتين، أو من لوحة Supabase: Authentication → Providers → Email عطّل «Confirm email» في بيئة التجربة، أو أنشئ المستخدم يدوياً من Authentication → Users ثم أضف نفس البريد في جدول الموظفين.',
-      );
-    }
-    throw new Error(s);
-  }
-}
-
 /**
  * إضافة موظف في public.users (المالك أو المحاسب).
- * إذا أدخل المالك بريداً حقيقياً + كلمة مرور (8 أحرف على الأقل) يُنشأ حساب Supabase Auth تلقائياً
- * (طلب REST منفصل حتى تبقى جلسة المالك كما هي)، ثم يُدرج الصف في public.users.
- * المحاسب لا يمكنه إنشاء دور «مالك».
+ * بريد حقيقي + كلمة مرور (8+): يُدرج الموظف ثم يُنشأ حساب Auth عبر Edge Function
+ * (email_confirm: true — بدون إرسال بريد تأكيد).
  */
 export async function createUserSb(payload: {
   name: string;
@@ -258,24 +219,6 @@ export async function createUserSb(payload: {
   const { data: existing } = await sb.from('users').select('id').eq('email', email).maybeSingle();
   if (existing) throw new Error('البريد مستخدم مسبقاً في جدول الموظفين');
 
-  let authSignUpFailed = false;
-  let authSignUpNote = '';
-  if (providedEmail && !isInternalEmail && password.length >= 8) {
-    try {
-      await authSignUpViaRest(email, password);
-    } catch (authErr: unknown) {
-      const errMsg = authErr instanceof Error ? authErr.message : String(authErr);
-      const isRateLimit = /rate limit|too many requests|over_email_send_rate/i.test(errMsg);
-      if (isRateLimit) {
-        authSignUpFailed = true;
-        authSignUpNote =
-          'تم إنشاء الموظف في النظام بنجاح، لكن تعذّر إنشاء حساب الدخول بسبب حد إرسال البريد في Supabase. يمكن إنشاء حساب الدخول لاحقاً من لوحة Supabase → Authentication → Users أو بتعطيل تأكيد البريد.';
-      } else {
-        throw authErr;
-      }
-    }
-  }
-
   const skills = Array.isArray(payload.skills) ? payload.skills : [];
   const payrollRolesForSalary = ['مندوب', 'محاسب', 'مدير مبيعات', 'مدير إنتاج'];
   const baseSalary =
@@ -313,12 +256,20 @@ export async function createUserSb(payload: {
   }
   if (!data) throw new Error('فشل إنشاء الموظف');
 
+  const userId = String((data as Record<string, unknown>).id);
+  if (providedEmail && !isInternalEmail && password.length >= 8) {
+    try {
+      await setEmployeeAuthPasswordSb(userId, email, password);
+    } catch (authErr: unknown) {
+      await sb.from('users').delete().eq('id', userId);
+      const msg = authErr instanceof Error ? authErr.message : 'تعذر إنشاء حساب الدخول';
+      throw new Error(msg);
+    }
+  }
+
   const result: { user: User; tempPassword?: string; authNote?: string } = {
     user: mapUserFromRow(data as Record<string, unknown>),
   };
-  if (authSignUpFailed && authSignUpNote) {
-    result.authNote = authSignUpNote;
-  }
   return result;
 }
 

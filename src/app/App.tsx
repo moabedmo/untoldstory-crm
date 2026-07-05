@@ -4833,8 +4833,23 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
   const leadStatuses: LeadStatus[] = ['جديد', 'قيد التواصل', 'عرض سعر', 'تفاوض', 'مغلق - فوز', 'مغلق - خسارة'];
   const leadCategories: LeadCategory[] = ['إنجليزي', 'شركات كبرى', 'شركات صغيرة', 'إعلانات', 'سوشيال ميديا'];
   const reps = users.filter(u => u.role === 'مندوب');
+  const isTeamLeaderActor = currentUser?.role === 'مندوب' && Boolean(currentUser?.isTeamLeader);
+  const teamMemberIds = useMemo(() => {
+    if (!isTeamLeaderActor || !currentUser) return null;
+    const ids = new Set<string>([currentUser.id]);
+    users.forEach((u) => {
+      if (u.teamLeaderId === currentUser.id) ids.add(u.id);
+    });
+    return ids;
+  }, [isTeamLeaderActor, currentUser, users]);
+  const assignableReps = useMemo(() => {
+    if (!isTeamLeaderActor || !teamMemberIds) return reps;
+    return reps.filter((u) => teamMemberIds.has(u.id));
+  }, [reps, isTeamLeaderActor, teamMemberIds]);
   const canFilterBySalesRep =
-    currentUser?.role === 'مالك' || currentUser?.role === 'مدير مبيعات';
+    currentUser?.role === 'مالك' ||
+    currentUser?.role === 'مدير مبيعات' ||
+    (isTeamLeaderActor && assignableReps.length > 0);
   const repLeadCounts = useMemo(() => {
     const counts = new Map<string, number>();
     for (const lead of leads) {
@@ -4847,7 +4862,10 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
   const canCreateLead = currentUser?.role === 'مالك' || currentUser?.role === 'مدير مبيعات';
   const canAddManualCustomer = currentUser?.role === 'محاسب' || currentUser?.role === 'مالك';
   const canUseCustomerMode = currentUser?.role === 'محاسب' || currentUser?.role === 'مالك';
-  const canManageAssignment = currentUser?.role === 'مالك' || currentUser?.role === 'مدير مبيعات';
+  const canManageAssignment =
+    currentUser?.role === 'مالك' ||
+    currentUser?.role === 'مدير مبيعات' ||
+    isTeamLeaderActor;
   const canChangeAnyStatus = currentUser?.role === 'مالك' || currentUser?.role === 'مدير مبيعات';
   const isSalesManagerLeadDistribution = currentUser?.role === 'مدير مبيعات';
   const isLeadsDistributionHub =
@@ -4989,7 +5007,11 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
     }
 
     if (currentUser.role === 'مندوب') {
-      result = result.filter(l => l.assignedTo === currentUser.id);
+      if (isTeamLeaderActor && teamMemberIds) {
+        result = result.filter((l) => !l.assignedTo || teamMemberIds.has(l.assignedTo));
+      } else {
+        result = result.filter((l) => l.assignedTo === currentUser.id);
+      }
     }
 
     if (currentUser.role === 'مدير إنتاج') {
@@ -5048,7 +5070,7 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
     }
 
     return result;
-  }, [leads, invoices, priceQuotes, currentUser, assignedFilter, statusFilter, sourceFilter, overdueOnly, focusLeadIds, repUserFilterId, search]);
+  }, [leads, invoices, priceQuotes, currentUser, assignedFilter, statusFilter, sourceFilter, overdueOnly, focusLeadIds, repUserFilterId, search, isTeamLeaderActor, teamMemberIds]);
 
   const leadsPageCount = Math.max(1, Math.ceil(visibleLeads.length / leadsPageSize));
   const paginatedLeads = useMemo(() => {
@@ -5095,7 +5117,7 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
   const runBulkAssign = async (leadIds: string[], userId: string | undefined) => {
     const ids = [...new Set(leadIds.map((id) => String(id).trim()).filter(Boolean))];
     if (ids.length === 0) return;
-    const rep = userId ? reps.find((r) => r.id === userId) : undefined;
+    const rep = userId ? assignableReps.find((r) => r.id === userId) : undefined;
     if (userId && !rep) {
       toast.error(t('leads.assignRepNotFound'));
       return;
@@ -5739,7 +5761,7 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
             <option value="unassigned">{t('leads.filterUnassigned')}</option>
           </select>)}
 
-          {entityMode === 'leads' && canFilterBySalesRep && reps.length > 0 && (
+          {entityMode === 'leads' && canFilterBySalesRep && assignableReps.length > 0 && (
             <select
               value={repUserFilterId}
               onChange={(e) => {
@@ -5751,7 +5773,7 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
               aria-label={t('leads.filterBySalesRep')}
             >
               <option value="">{t('leads.filterAllReps')}</option>
-              {reps.map((rep) => (
+              {assignableReps.map((rep) => (
                 <option key={rep.id} value={rep.id}>
                   {rep.name} ({repLeadCounts.get(rep.id) || 0})
                 </option>
@@ -5869,7 +5891,7 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
           >
             <option value="">{t('leads.chooseRep')}</option>
             <option value={BULK_UNASSIGN_REP_ID}>{t('leads.filterUnassigned')}</option>
-            {reps.map((rep) => (
+            {assignableReps.map((rep) => (
               <option key={rep.id} value={rep.id}>
                 {rep.name}
               </option>
@@ -5989,8 +6011,10 @@ const LeadsWorkspace = ({ onOpenBulkUpload }: { onOpenBulkUpload?: () => void })
                           className="bg-[#0F1528] border border-white/15 rounded-xl px-3 py-2 text-xs min-w-[150px]"
                         >
                           <option value="">{t('common.noAssignee')}</option>
-                          {salesManager && <option value={salesManager.id}>{t('common.atSalesManager')}</option>}
-                          {reps.map(rep => (
+                          {!isTeamLeaderActor && salesManager && (
+                            <option value={salesManager.id}>{t('common.atSalesManager')}</option>
+                          )}
+                          {assignableReps.map(rep => (
                             <option key={rep.id} value={rep.id}>{rep.name}</option>
                           ))}
                         </select>

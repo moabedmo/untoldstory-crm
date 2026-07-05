@@ -13,6 +13,7 @@ import type { Session } from '@supabase/supabase-js';
 import { getSupabase } from '@/lib/supabase/client';
 import { isSupabaseQuotaError, isSupabaseQuotaCooldown, shouldWarnSupabaseQuota, assertSupabaseFetchAllowed } from '@/lib/supabase/supabaseGuard';
 import { fetchAuthUserProfile } from '@/lib/supabase/fetchAuthUserProfile';
+import { isLeadInTeamScope } from '@/lib/supabase/teamLeaderLeads';
 import { mapUserFromRow, mapMonthlyTargetFromRow, mapClosedMonthFromRow, mapCustodySettingsMap } from '@/lib/supabase/postgrestMappers';
 import {
   fetchLeadsApi,
@@ -1287,7 +1288,7 @@ interface DataContextType {
     userId: string,
     patch: { name?: string; avatar?: string; role?: User['role']; email?: string; baseSalary?: number },
   ) => Promise<boolean>;
-  /** المالك يعيّن كلمة مرور جديدة لموظف (خادم Prisma). في وضع Supabase المباشر استخدم لوحة Supabase → Authentication. */
+  /** المالك/مدير المبيعات يعيّن كلمة مرور جديدة لموظف — Supabase Auth عبر Edge Function set-employee-password */
   ownerSetEmployeePassword: (userId: string, newPassword: string) => Promise<boolean>;
   removeEmployee: (userId: string) => Promise<boolean>;
   getLeadScore: (lead: Partial<Lead>) => number;
@@ -6054,6 +6055,21 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       const isOwnTeammate = user?.role === 'مندوب' && user?.teamLeaderId === currentUser?.id;
       if (!isSelf && !isOwnTeammate) return;
     }
+    if (isTeamLeaderActor && currentUser) {
+      const teamIds = new Set<string>([currentUser.id]);
+      users.forEach((u) => {
+        if (u.teamLeaderId === currentUser.id) teamIds.add(u.id);
+      });
+      const lead = leads.find((l) => l.id === leadId);
+      if (lead && !isLeadInTeamScope(lead, teamIds)) {
+        toast.error('لا يمكن توزيع هذا الليد — خارج نطاق فريقك');
+        return;
+      }
+      if (userId && !teamIds.has(userId)) {
+        toast.error('يمكنك التوزيع على نفسك أو على أعضاء فريقك فقط');
+        return;
+      }
+    }
     const assigneeName = user?.name || '';
     const assigneeLabel = user?.role === 'مدير مبيعات' ? `تعيين المدير: ${assigneeName}` : `تعيين المندوب: ${assigneeName}`;
     if (isServerDataMode()) {
@@ -6072,8 +6088,8 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
             entityId: leadId,
             details: userId ? `${assigneeLabel}` : 'بدون مندوب',
           });
-        } catch {
-          /* ignore */
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : 'تعذر تعيين الليد');
         }
       })();
       return;
@@ -6113,12 +6129,26 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const uniqueIds = [...new Set(leadIds.map((id) => String(id).trim()).filter(Boolean))];
     if (uniqueIds.length === 0) return 0;
 
+    let idsToAssign = uniqueIds;
+    if (isTeamLeaderActor && currentUser) {
+      const teamIds = new Set<string>([currentUser.id]);
+      users.forEach((u) => {
+        if (u.teamLeaderId === currentUser.id) teamIds.add(u.id);
+      });
+      if (userId && !teamIds.has(userId)) return 0;
+      idsToAssign = uniqueIds.filter((id) => {
+        const lead = leads.find((l) => l.id === id);
+        return lead ? isLeadInTeamScope(lead, teamIds) : false;
+      });
+      if (idsToAssign.length === 0) return 0;
+    }
+
     if (isServerDataMode()) {
       const activityAction = userId
         ? `تعيين المندوب: ${user?.name || ''}`
         : 'إلغاء تعيين المندوب';
       const results = await Promise.allSettled(
-        uniqueIds.map((leadId) =>
+        idsToAssign.map((leadId) =>
           serverPatchLead(leadId, {
             assignedTo: userId || null,
             appendActivity: { action: activityAction },
@@ -6129,7 +6159,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       let ok = 0;
       results.forEach((result, index) => {
         if (result.status !== 'fulfilled') return;
-        updates.set(uniqueIds[index], result.value);
+        updates.set(idsToAssign[index], result.value);
         ok += 1;
       });
       if (updates.size > 0) {
@@ -6145,7 +6175,7 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
       return ok;
     }
 
-    const idSet = new Set(uniqueIds);
+    const idSet = new Set(idsToAssign);
     let ok = 0;
     setLeads((prev) =>
       prev.map((lead) => {
@@ -6676,7 +6706,10 @@ export const DataProvider: React.FC<{ children: React.ReactNode }> = ({ children
         entityId: userId,
         details: target.name,
       });
-      toast.success('تم تحديث كلمة مرور الموظف');
+      toast.success('تم تحديث كلمة مرور الموظف', {
+        description: `البريد للدخول: ${String(target.email || '').trim().toLowerCase()}\nكلمة المرور: ${pwd}`,
+        duration: 12000,
+      });
       return true;
     } catch (e: unknown) {
       const msg = e instanceof Error ? e.message : 'تعذر تحديث كلمة المرور';

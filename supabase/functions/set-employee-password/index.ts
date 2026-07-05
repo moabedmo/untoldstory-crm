@@ -59,8 +59,8 @@ Deno.serve(async (req) => {
       .eq('email', actorEmail)
       .maybeSingle();
     const actorRole = actorRow?.role as string | undefined;
-    if (actorErr || !actorRow || (actorRole !== 'مالك' && actorRole !== 'مدير مبيعات')) {
-      return json({ error: 'إدارة حسابات الدخول متاحة للمالك ومدير المبيعات فقط' }, 403);
+    if (actorErr || !actorRow || (actorRole !== 'مالك' && actorRole !== 'مدير مبيعات' && actorRole !== 'محاسب')) {
+      return json({ error: 'إدارة حسابات الدخول متاحة للمالك ومدير المبيعات والمحاسب فقط' }, 403);
     }
 
     const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
@@ -103,6 +103,9 @@ Deno.serve(async (req) => {
     }
     if (actorRole === 'مدير مبيعات' && String(targetRow.role) !== 'مندوب') {
       return json({ error: 'مدير المبيعات يستطيع تغيير كلمة مرور المندوبين فقط' }, 403);
+    }
+    if (actorRole === 'محاسب' && String(targetRow.role) === 'مالك') {
+      return json({ error: 'المحاسب لا يستطيع إدارة حساب المالك' }, 403);
     }
     if (String(targetRow.email || '').trim().toLowerCase() !== email) {
       return json({ error: 'البريد الحالي لا يطابق سجل الموظف — حدّث الصفحة وأعد المحاولة' }, 400);

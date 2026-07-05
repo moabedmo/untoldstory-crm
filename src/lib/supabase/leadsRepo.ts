@@ -2,6 +2,7 @@ import { getSupabase } from '@/lib/supabase/client';
 import type { Lead, Activity } from '@/app/context/DataContext';
 import { mapLeadFromRow } from '@/lib/supabase/postgrestMappers';
 import { getSupabaseActor } from '@/lib/supabase/getActor';
+import { canTeamLeaderPatchLead, fetchTeamMemberIds } from '@/lib/supabase/teamLeaderLeads';
 import { normalizeLeadPhone, leadPhoneDigitsKey } from '@/lib/leadPhone';
 
 async function getActor(): Promise<{ id: string; name: string; role: string }> {
@@ -113,10 +114,14 @@ export async function supabasePatchLead(
   const { data: existingRow, error: exErr } = await sb.from('leads').select('*').eq('id', id).maybeSingle();
   if (exErr || !existingRow) throw new Error('الليد غير موجود');
   const existing = mapLeadFromRow(existingRow as Record<string, unknown>);
-  const canEdit =
+  let canEdit =
     actor.role === 'مالك' ||
     actor.role === 'مدير مبيعات' ||
     (actor.role === 'مندوب' && existing.assignedTo === actor.id);
+  if (!canEdit && actor.role === 'مندوب' && actor.isTeamLeader) {
+    const teamIds = await fetchTeamMemberIds(sb, actor.id);
+    if (canTeamLeaderPatchLead(actor, existing, patch, teamIds)) canEdit = true;
+  }
   if (!canEdit) throw new Error('غير مصرح');
 
   const data: Record<string, unknown> = {};
