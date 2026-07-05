@@ -24,13 +24,33 @@ export default function ProjectsListPage() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
 
   const [form, setForm] = useState({ name: '', code: '', clientName: '', startDate: '', notes: '' });
+  const [saving, setSaving] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const refresh = useCallback(() => {
-    getProjectsDataAsync().then(setData).catch(() => {});
+    setLoadError(null);
+    return getProjectsDataAsync()
+      .then((d) => { setData(d); setLoadError(null); })
+      .catch((e: unknown) => {
+        const msg = e instanceof Error ? e.message : 'تعذر تحميل الشغلانات';
+        setLoadError(msg);
+        toast.error(msg);
+      });
   }, []);
 
   useEffect(() => {
-    getProjectsDataAsync().then((d) => { setData(d); setLoading(false); }).catch(() => setLoading(false));
+    let cancelled = false;
+    setLoading(true);
+    setLoadError(null);
+    getProjectsDataAsync()
+      .then((d) => { if (!cancelled) { setData(d); setLoadError(null); } })
+      .catch((e: unknown) => {
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : 'تعذر تحميل الشغلانات';
+        setLoadError(msg);
+      })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
   }, []);
 
   const alerts = useMemo(() => {
@@ -62,12 +82,14 @@ export default function ProjectsListPage() {
   }, [data.projects, search]);
 
   const handleAdd = async () => {
+    if (saving) return;
     if (!form.name.trim() || !form.code.trim() || !form.clientName.trim()) {
       toast.error('أدخل اسم الشغلانة والكود واسم العميل');
       return;
     }
+    setSaving(true);
     try {
-      await addProject({
+      const created = await addProject({
         name: form.name.trim(),
         code: form.code.trim().toUpperCase(),
         clientName: form.clientName.trim(),
@@ -75,12 +97,18 @@ export default function ProjectsListPage() {
         status: 'مفتوحة',
         notes: form.notes.trim(),
       });
-      refresh();
+      setData((prev) => ({
+        ...prev,
+        projects: [created, ...prev.projects.filter((p) => p.id !== created.id)],
+      }));
+      void refresh();
       setShowAdd(false);
       setForm({ name: '', code: '', clientName: '', startDate: '', notes: '' });
       toast.success('تم إنشاء الشغلانة بنجاح');
     } catch (e: unknown) {
       toast.error(e instanceof Error ? e.message : 'خطأ');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -141,12 +169,30 @@ export default function ProjectsListPage() {
         />
       </div>
 
+      {loadError && (
+        <div className="bg-amber-500/5 border border-amber-500/20 rounded-2xl p-4 flex flex-wrap items-center justify-between gap-3">
+          <p className="text-sm text-amber-200/90">{loadError}</p>
+          <button
+            type="button"
+            onClick={() => { setLoading(true); void refresh().finally(() => setLoading(false)); }}
+            className="text-xs font-bold text-amber-300 hover:text-white px-3 py-1.5 rounded-lg border border-amber-500/30"
+          >
+            إعادة المحاولة
+          </button>
+        </div>
+      )}
+
       {/* List */}
       <div className="space-y-3">
-        {filtered.length === 0 ? (
+        {loading ? (
+          <div className="bg-[#18181B] border border-zinc-800 rounded-2xl p-12 text-center">
+            <Briefcase className="h-12 w-12 text-zinc-700 mx-auto mb-3 animate-pulse" />
+            <p className="text-zinc-500">جاري تحميل الشغلانات…</p>
+          </div>
+        ) : filtered.length === 0 ? (
           <div className="bg-[#18181B] border border-zinc-800 rounded-2xl p-12 text-center">
             <Briefcase className="h-12 w-12 text-zinc-700 mx-auto mb-3" />
-            <p className="text-zinc-500">{data.projects.length === 0 ? 'لا توجد شغلانات بعد — أنشئ أول شغلانة' : 'لا توجد نتائج'}</p>
+            <p className="text-zinc-500">{data.projects.length === 0 ? 'لا توجد شغلانات بعد — اضغط «شغلانة جديدة» وأدخل الاسم والكود واسم العميل' : 'لا توجد نتائج'}</p>
           </div>
         ) : (
           filtered.map((p) => {
@@ -185,12 +231,13 @@ export default function ProjectsListPage() {
 
       {/* Add Modal */}
       {showAdd && createPortal(
-        <div className="fixed inset-0 z-[400] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true" onClick={() => setShowAdd(false)}>
-          <div className="w-full max-w-lg rounded-2xl border border-zinc-700 bg-[#18181B] text-white shadow-2xl p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[400] bg-black/65 backdrop-blur-sm flex items-center justify-center p-4" role="dialog" aria-modal="true">
+          <div className="w-full max-w-lg rounded-2xl border border-zinc-700 bg-[#18181B] text-white shadow-2xl p-6 space-y-4">
             <div className="flex items-center justify-between">
               <h3 className="text-lg font-bold">شغلانة جديدة</h3>
-              <button onClick={() => setShowAdd(false)} className="p-1 hover:bg-zinc-700 rounded-lg"><X className="h-5 w-5 text-zinc-400" /></button>
+              <button type="button" onClick={() => !saving && setShowAdd(false)} className="p-1 hover:bg-zinc-700 rounded-lg"><X className="h-5 w-5 text-zinc-400" /></button>
             </div>
+            <p className="text-xs text-zinc-500 -mt-2">الحقول المطلوبة: اسم الشغلانة، الكود (فريد)، اسم العميل</p>
             <div className="grid grid-cols-2 gap-3">
               <input placeholder="اسم الشغلانة *" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} className="col-span-2 w-full bg-[#09090B] border border-zinc-700 rounded-xl py-2.5 px-4 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[#6366F1]/50" />
               <input placeholder="كود الشغلانة * (مثال: HK001)" value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} className="w-full bg-[#09090B] border border-zinc-700 rounded-xl py-2.5 px-4 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[#6366F1]/50" />
@@ -199,8 +246,8 @@ export default function ProjectsListPage() {
               <input placeholder="ملاحظات (اختياري)" value={form.notes} onChange={(e) => setForm({ ...form, notes: e.target.value })} className="w-full bg-[#09090B] border border-zinc-700 rounded-xl py-2.5 px-4 text-sm text-white placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-[#6366F1]/50" />
             </div>
             <div className="flex justify-end gap-3">
-              <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-zinc-400 font-bold text-sm">إلغاء</button>
-              <button onClick={handleAdd} className="bg-[#6366F1] text-white px-5 py-2 rounded-xl font-bold text-sm hover:bg-[#5254E2] transition-all">إنشاء</button>
+              <button type="button" disabled={saving} onClick={() => setShowAdd(false)} className="px-4 py-2 text-zinc-400 font-bold text-sm disabled:opacity-50">إلغاء</button>
+              <button type="button" disabled={saving} onClick={handleAdd} className="bg-[#6366F1] text-white px-5 py-2 rounded-xl font-bold text-sm hover:bg-[#5254E2] transition-all disabled:opacity-60">{saving ? 'جاري الإنشاء…' : 'إنشاء'}</button>
             </div>
           </div>
         </div>,

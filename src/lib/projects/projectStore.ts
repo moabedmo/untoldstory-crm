@@ -82,10 +82,37 @@ function mapCustody(r: Record<string, unknown>): ProjectCustody {
 
 // ============== Public API ==============
 
+async function waitForSupabaseSession(maxMs = 2500): Promise<boolean> {
+  const s = sb();
+  const started = Date.now();
+  while (Date.now() - started < maxMs) {
+    const { data } = await s.auth.getSession();
+    if (data.session?.access_token) return true;
+    await new Promise((r) => setTimeout(r, 120));
+  }
+  return false;
+}
+
+function mapProjectsFetchError(message: string): string {
+  const m = String(message || '').toLowerCase();
+  if (m.includes('jwt') || m.includes('not authenticated') || m.includes('permission denied')) {
+    return 'انتهت الجلسة — أعد تسجيل الدخول ثم حاول مرة أخرى';
+  }
+  return message || 'تعذر تحميل الشغلانات';
+}
+
 export async function getProjectsDataAsync(): Promise<ProjectsData> {
   if (!useSb()) return loadLocal();
   const cached = getCachedOrNull();
   if (cached) return cached;
+
+  const localFallback = loadLocal();
+  const hasSession = await waitForSupabaseSession();
+  if (!hasSession) {
+    if (localFallback.projects.length > 0) return localFallback;
+    throw new Error('يجب تسجيل الدخول لعرض الشغلانات');
+  }
+
   const s = sb();
   const [pRes, rRes, eRes, cRes] = await Promise.all([
     s.from('projects').select('*').order('created_at', { ascending: false }),
@@ -93,6 +120,11 @@ export async function getProjectsDataAsync(): Promise<ProjectsData> {
     s.from('project_expenses').select('*').order('created_at', { ascending: false }),
     s.from('project_custodies').select('*').order('created_at', { ascending: false }),
   ]);
+  if (pRes.error) throw new Error(mapProjectsFetchError(pRes.error.message));
+  if (rRes.error) throw new Error(mapProjectsFetchError(rRes.error.message));
+  if (eRes.error) throw new Error(mapProjectsFetchError(eRes.error.message));
+  if (cRes.error) throw new Error(mapProjectsFetchError(cRes.error.message));
+
   const projects = (pRes.data || []).map((r) => mapProject(r as Record<string, unknown>));
   const revenues = (rRes.data || []).map((r) => mapRevenue(r as Record<string, unknown>));
   const allExpenses = (eRes.data || []).map((r) => mapExpense(r as Record<string, unknown>));
@@ -116,11 +148,16 @@ export async function addProject(p: Omit<Project, 'id' | 'createdAt'>): Promise<
   const id = newId('prj');
   const now = new Date().toISOString();
   if (useSb()) {
+    const nowIso = new Date().toISOString();
     const { data, error } = await sb().from('projects').insert({
       id, name: p.name, code: p.code, client_name: p.clientName,
       start_date: p.startDate, status: p.status, notes: p.notes,
+      updated_at: nowIso,
     }).select('*').single();
-    if (error) throw new Error(error.message);
+    if (error) {
+      if (error.code === '23505') throw new Error('كود الشغلانة مستخدم مسبقاً');
+      throw new Error(mapProjectsFetchError(error.message));
+    }
     const local = loadLocal();
     const proj = mapProject(data as Record<string, unknown>);
     local.projects.unshift(proj);
