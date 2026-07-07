@@ -1,0 +1,1 @@
+SELECT id, updated_at, doc_json->>'status' AS status, doc_json->>'title' AS title, doc_json->>'totalAmount' AS amount, doc_json->>'createdByName' AS created_by FROM custody_funds ORDER BY updated_at DESC;

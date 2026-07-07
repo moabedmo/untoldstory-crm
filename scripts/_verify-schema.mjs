@@ -1,0 +1,15 @@
+import { readFileSync, existsSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+const root = join(dirname(fileURLToPath(import.meta.url)), '..');
+let url = readFileSync(join(root,'server-api','.env'),'utf8').match(/^DATABASE_URL=(.+)$/m)[1].trim().replace(/^["']|["']$/g,'');
+url = url.replace(/([?&])sslmode=[^&]*/i,'$1').replace(/[?&]$/,'');
+const pg=(await import('pg')).default; const c=new pg.Client({connectionString:url,ssl:{rejectUnauthorized:false}});
+await c.connect();
+const q=async(s)=>{const r=await c.query(s);return r.rows;};
+console.log('leads.last_call_at:', (await q("select 1 from information_schema.columns where table_name='leads' and column_name='last_call_at'")).length?'✅':'❌');
+console.log('employee_deductions.approved:', (await q("select 1 from information_schema.columns where table_name='employee_deductions' and column_name='approved'")).length?'✅':'❌');
+console.log('projects.sales_id + project_date:', (await q("select 1 from information_schema.columns where table_name='projects' and column_name in ('sales_id','project_date')")).length===2?'✅':'❌');
+console.log('project_updates table:', (await q("select 1 from information_schema.tables where table_name='project_updates'")).length?'✅':'❌');
+console.log('avatar storage policy:', (await q("select 1 from pg_policies where policyname='workspace_assets_avatar_insert'")).length?'✅':'❌');
+await c.end();
