@@ -80,7 +80,12 @@ jobs:
         run: |
           set -euo pipefail
           node scripts/vercel-prebuilt.mjs
-          vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+          BUNDLE=$(grep -oE 'assets/index-[A-Za-z0-9_-]+\.js' dist/index.html | head -1 || true)
+          echo "Deploying bundle: ${BUNDLE:-unknown}"
+          echo "Target project: $VERCEL_PROJECT_ID (org: $VERCEL_ORG_ID)"
+          DEPLOY_URL=$(vercel deploy --prebuilt --prod --yes --token="$VERCEL_TOKEN")
+          echo "Vercel deployment URL: $DEPLOY_URL"
+          echo "If untoldstory.click still shows an old bundle, the domain is linked to a different Vercel project — open Vercel → Domains and copy the Project ID from the project that owns untoldstory.click."
 
       - name: Verify live site bundle
         env:
