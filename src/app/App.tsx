@@ -12773,9 +12773,19 @@ const WelcomeGate = ({ onUnlock }: { onUnlock: () => void }) => {
 };
 
 /** ترجمة أخطاء Supabase Auth الشائعة عند تسجيل الدخول (بدل رسائل إنجليزية خام). */
-function mapSupabaseAuthErrorForLogin(raw: string): string {
+function mapSupabaseAuthErrorForLogin(
+  raw: string,
+  meta?: { code?: string; status?: number },
+): string {
   const r = String(raw || '').trim();
-  if (!r) return 'فشل تسجيل الدخول';
+  const code = String(meta?.code || '').trim();
+  if (!r) {
+    if (code === 'invalid_credentials') {
+      return 'البريد أو كلمة المرور غير صحيحة. تأكد من نسخهما بدون مسافات زائدة في البداية أو النهاية.';
+    }
+    if (code) return `فشل تسجيل الدخول (${code})`;
+    return 'فشل تسجيل الدخول — تحقق من البريد وكلمة المرور (بدون مسافات زائدة).';
+  }
   const low = r.toLowerCase();
   if (
     low.includes('rate limit') ||
@@ -12823,13 +12833,23 @@ const LoginPage = () => {
     try {
       if (isSupabaseDirectMode()) {
         const sb = getSupabase();
+        const loginEmail = email.trim().toLowerCase();
+        const loginPassword = password.trim();
         const { data: authData, error: authErr } = await sb.auth.signInWithPassword({
-          email: email.trim().toLowerCase(),
-          password,
+          email: loginEmail,
+          password: loginPassword,
         });
         if (authErr || !authData.user?.email) {
           const raw = authErr?.message || '';
-          setError(mapSupabaseAuthErrorForLogin(raw));
+          const code =
+            authErr && typeof authErr === 'object' && 'code' in authErr
+              ? String((authErr as { code?: string }).code || '')
+              : '';
+          const status =
+            authErr && typeof authErr === 'object' && 'status' in authErr
+              ? Number((authErr as { status?: number }).status)
+              : undefined;
+          setError(mapSupabaseAuthErrorForLogin(raw, { code, status }));
           return;
         }
         const em = authData.user.email.trim().toLowerCase();
@@ -12872,7 +12892,7 @@ const LoginPage = () => {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email.trim().toLowerCase(),
-          password,
+          password: password.trim(),
         }),
       });
       const data = await res.json().catch(() => ({}));
